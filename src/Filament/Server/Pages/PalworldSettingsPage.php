@@ -174,68 +174,36 @@ class PalworldSettingsPage extends Page
     {
         $schema = [
             $this->buildStatusSection(),
-            $this->buildGuidanceSection(),
+            $this->buildStartupVariablesSection(),
         ];
 
-        if ($this->hasUnsavedChanges()) {
-            $schema[] = Section::make('Pending Changes')
-                ->columnSpanFull()
-                ->schema([
-                    TextEntry::make('pending_changes_notice')
-                        ->hiddenLabel()
-                        ->state('You have unsaved changes in the editor.'),
-                ]);
-        }
-
-        $schema[] = $this->buildStartupVariablesSection();
-
         if ($this->settingsFileError !== null) {
-            $schema[] = Section::make('PalWorldSettings.ini')
-                ->description('Expected path: ' . $this->settingsPath)
-                ->columnSpanFull()
-                ->schema([
-                    TextEntry::make('settings_file_error')
-                        ->label('Read error')
-                        ->state($this->settingsFileError),
-                ]);
+            $schema[] = $this->buildNoticeSection('settings_file_error', 'Read error', $this->settingsFileError);
 
             return $schema;
         }
 
         if (! $this->settingsFileExists) {
-            $schema[] = Section::make('PalWorldSettings.ini')
-                ->description('Expected path: ' . $this->settingsPath)
-                ->columnSpanFull()
-                ->schema([
-                    TextEntry::make('settings_file_missing')
-                        ->label('Status')
-                        ->state('PalWorldSettings.ini was not found. Start the Palworld server once to generate it, then stop the server before editing.'),
-                ]);
+            $schema[] = $this->buildNoticeSection(
+                'settings_file_missing',
+                'Status',
+                'PalWorldSettings.ini was not found. Start the Palworld server once to generate it, then stop the server before editing.'
+            );
 
             return $schema;
         }
 
         if ($this->settingsParseError !== null) {
-            $schema[] = Section::make('PalWorldSettings.ini')
-                ->description('Expected path: ' . $this->settingsPath)
-                ->columnSpanFull()
-                ->schema([
-                    TextEntry::make('settings_parse_error')
-                        ->label('Parse error')
-                        ->state($this->settingsParseError),
-                ]);
+            $schema[] = $this->buildNoticeSection('settings_parse_error', 'Parse error', $this->settingsParseError);
 
             return $schema;
         }
-
-        $schema[] = $this->buildSettingsOverviewSection();
 
         if ($this->quickAccessItems !== []) {
             $schema[] = Section::make('Quick Access')
                 ->description('Common Palworld settings for quick edits.')
                 ->columns(2)
                 ->columnSpanFull()
-                ->extraAttributes(['class' => 'palworld-settings-grid-section'])
                 ->schema($this->buildEditableFieldComponents($this->quickAccessItems));
         }
 
@@ -250,7 +218,6 @@ class PalworldSettingsPage extends Page
                 ->columns(2)
                 ->columnSpanFull()
                 ->collapsible()
-                ->extraAttributes(['class' => 'palworld-settings-grid-section'])
                 ->schema($this->buildEditableFieldComponents($group['items']));
         }
 
@@ -263,7 +230,6 @@ class PalworldSettingsPage extends Page
                 ->columnSpanFull()
                 ->collapsible()
                 ->collapsed()
-                ->extraAttributes(['class' => 'palworld-settings-grid-section'])
                 ->schema($this->buildEditableFieldComponents($advancedGroup['items']));
         }
 
@@ -527,16 +493,12 @@ class PalworldSettingsPage extends Page
         $tooltip = $this->settingsSchema()->getFieldTooltip($item['key']);
 
         if ($item['type'] === 'boolean') {
-            return $this->wrapFieldInSettingCard(
-                component: Toggle::make($item['key'])
-                    ->label($item['label'])
-                    ->helperText($description)
-                    ->hintIcon('tabler-code', tooltip: $tooltip)
-                    ->hintColor('info')
-                    ->onColor('info')
-                    ->offColor('gray')
-                    ->disabled(fn (): bool => ! $this->canSave()),
-            );
+            return Toggle::make($item['key'])
+                ->label($item['label'])
+                ->helperText($description)
+                ->hintIcon('tabler-code', tooltip: $tooltip)
+                ->hintColor('info')
+                ->disabled(fn (): bool => ! $this->canSave());
         }
 
         if ($item['type'] === 'enum') {
@@ -547,15 +509,13 @@ class PalworldSettingsPage extends Page
                 $options[] = (string) $currentValue;
             }
 
-            return $this->wrapFieldInSettingCard(
-                component: Select::make($item['key'])
-                    ->label($item['label'])
-                    ->helperText($description)
-                    ->hintIcon('tabler-code', tooltip: $tooltip)
-                    ->hintColor('info')
-                    ->options(array_combine($options, $options))
-                    ->disabled(fn (): bool => ! $this->canSave()),
-            );
+            return Select::make($item['key'])
+                ->label($item['label'])
+                ->helperText($description)
+                ->hintIcon('tabler-code', tooltip: $tooltip)
+                ->hintColor('info')
+                ->options(array_combine($options, $options))
+                ->disabled(fn (): bool => ! $this->canSave());
         }
 
         $input = TextInput::make($item['key'])
@@ -563,8 +523,7 @@ class PalworldSettingsPage extends Page
             ->helperText($description)
             ->hintIcon('tabler-code', tooltip: $tooltip)
             ->hintColor('info')
-            ->disabled(fn (): bool => ! $this->canSave())
-            ->extraAttributes([]);
+            ->disabled(fn (): bool => ! $this->canSave());
 
         if ($item['type'] === 'integer') {
             $input->numeric()->step(1);
@@ -580,9 +539,7 @@ class PalworldSettingsPage extends Page
             $input->maxValue($definition['max']);
         }
 
-        return $this->wrapFieldInSettingCard(
-            component: $input,
-        );
+        return $input;
     }
 
     private function buildStatusSection(): Section
@@ -599,18 +556,9 @@ class PalworldSettingsPage extends Page
                     ->color($this->getStateColor()),
                 TextEntry::make('editing_state')
                     ->label('Editing')
-                    ->state($this->isSafeToEdit ? 'Settings can be edited safely.' : 'Editing is locked until the server is offline/stopped.'),
-            ]);
-    }
-
-    private function buildGuidanceSection(): Section
-    {
-        return Section::make('Editing Guidance')
-            ->columnSpanFull()
-            ->schema([
-                TextEntry::make('editing_guidance')
-                    ->hiddenLabel()
-                    ->state('Restart the server after saving any Palworld settings changes. Values managed by the server egg startup variables should be edited from the Startup tab, not here.'),
+                    ->state($this->isSafeToEdit ? 'Enabled' : 'Locked')
+                    ->badge()
+                    ->color($this->isSafeToEdit ? 'success' : 'warning'),
             ]);
     }
 
@@ -620,54 +568,47 @@ class PalworldSettingsPage extends Page
 
         if ($this->startupVariablesAvailable) {
             foreach ($this->startupVariables as $variable) {
-                $components[] = $this->wrapFieldInSettingCard(
-                    component: TextInput::make('startupVariableDisplayValues.' . $variable['name'])
-                        ->label($variable['name'])
-                        ->helperText($variable['description'] ?: null)
-                        ->hintIcon('tabler-code', tooltip: $variable['name'])
-                        ->hintColor('info')
-                        ->disabled(),
-                );
+                $components[] = TextInput::make('startupVariableDisplayValues.' . $variable['name'])
+                    ->label($variable['name'])
+                    ->helperText($variable['description'] ?: null)
+                    ->hintIcon('tabler-code', tooltip: $variable['name'])
+                    ->hintColor('info')
+                    ->disabled();
             }
         } else {
             $components[] = TextEntry::make('startup_variables_unavailable')
                 ->hiddenLabel()
+                ->columnSpanFull()
                 ->state('No supported startup variables were detected for this server yet. This can happen if the variables relation differs on this Pelican build or if the server egg does not expose the expected values.');
         }
 
+        if ($this->detectedEggManagedIniKeys !== []) {
+            $components[] = TextEntry::make('detected_egg_managed')
+                ->label('Managed in PalWorldSettings.ini by the egg')
+                ->columnSpanFull()
+                ->state(implode(', ', $this->detectedEggManagedIniKeys))
+                ->helperText('These keys are present in the file but excluded from editing here because the egg may overwrite them on start.');
+        }
+
         return Section::make('Egg / Startup Variables')
-            ->description('These values are managed by the Pelican egg startup variables and may be regenerated on server start.')
+            ->description('These values are managed by the Pelican egg startup variables and may be regenerated on server start. Edit them from the Startup tab.')
             ->columns(2)
             ->columnSpanFull()
             ->collapsible()
-            ->extraAttributes(['class' => 'palworld-settings-grid-section'])
+            ->collapsed()
             ->schema($components);
     }
 
-    private function buildSettingsOverviewSection(): Section
+    private function buildNoticeSection(string $key, string $label, string $message): Section
     {
-        $components = [
-            TextEntry::make('settings_file_status')
-                ->label('Status')
-                ->state('PalWorldSettings.ini was found and read successfully.'),
-        ];
-
-        if ($this->detectedEggManagedIniKeys !== []) {
-            $components[] = TextEntry::make('settings_egg_managed')
-                ->label('Startup-managed values')
-                ->state(implode(', ', $this->detectedEggManagedIniKeys));
-        }
-
-        if ($this->lastBackupPath !== null) {
-            $components[] = TextEntry::make('last_backup_path')
-                ->label('Last backup')
-                ->state($this->lastBackupPath . ($this->lastSavedAt ? ' | Saved at ' . $this->lastSavedAt : ''));
-        }
-
         return Section::make('PalWorldSettings.ini')
             ->description('Expected path: ' . $this->settingsPath)
             ->columnSpanFull()
-            ->schema($components);
+            ->schema([
+                TextEntry::make($key)
+                    ->label($label)
+                    ->state($message),
+            ]);
     }
 
     private function buildDebugSection(): Section
@@ -752,15 +693,6 @@ class PalworldSettingsPage extends Page
         }
 
         return $displayValues;
-    }
-
-    private function wrapFieldInSettingCard(Component $component): Section
-    {
-        return Section::make()
-            ->schema([$component])
-            ->extraAttributes([
-                'class' => 'palworld-setting-card',
-            ]);
     }
 
     private function fillFormState(): void
