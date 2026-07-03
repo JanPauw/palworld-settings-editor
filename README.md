@@ -153,9 +153,6 @@ may generate the config elsewhere and aren't the primary target of this version.
 | `src/Services/PelicanServerStateService.php` | Server state detection and "safe to edit" logic. |
 | `src/Services/PelicanStartupVariableService.php` | Startup-variable lookup and read-only display. |
 
-For a deeper contributor walkthrough — design decisions, UI direction, and open
-polish items — see [`CLAUDE_HANDOFF.md`](CLAUDE_HANDOFF.md).
-
 ## Contributing
 
 Issues and pull requests are welcome. The plugin deliberately sticks to native

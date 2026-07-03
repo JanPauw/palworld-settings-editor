@@ -6,6 +6,9 @@
 /vendor/
 /node_modules/
 
+# Internal / contributor handoff docs (not published)
+CLAUDE_HANDOFF.md
+
 # OS / editor cruft
 .DS_Store
 Thumbs.db
