@@ -55,6 +55,7 @@ class PalworldSettingsSchema
                     'bExistPlayerAfterLogout' => ['label' => 'Player Persists After Logout', 'type' => 'boolean'],
                     'bEnableDefenseOtherGuildPlayer' => ['label' => 'Enable Defense for Other Guild Players', 'type' => 'boolean'],
                     'bIsShowJoinLeftMessage' => ['label' => 'Show Join/Leave Messages', 'type' => 'boolean'],
+                    'bEnableInvaderEnemy' => ['label' => 'Enable Invader Enemy (Raids)', 'type' => 'boolean'],
                     'bUseAuth' => ['label' => 'Use Authentication', 'type' => 'boolean'],
                     'bIsUseBackupSaveData' => ['label' => 'Use Backup Save Data', 'type' => 'boolean'],
                     'AutoSaveSpan' => ['label' => 'Auto Save Span', 'type' => 'number', 'min' => 0, 'max' => 100000, 'step' => 0.1],
@@ -138,6 +139,16 @@ class PalworldSettingsSchema
         ];
     }
 
+    /**
+     * INI keys the Palworld egg rewrites from startup variables on every boot
+     * (via PalworldServerConfigParser). These are shown read-only and excluded
+     * from editing so the plugin never fights the egg over them.
+     *
+     * Matches the keys the stock games-steamcmd/palworld egg actually manages:
+     * ServerName/ServerDescription/ServerPassword/AdminPassword from their vars,
+     * ServerPlayerMaxNum from MAX_PLAYERS, RCON from RCON_ENABLE/RCON_PORT, and
+     * PublicIP/PublicPort from the built-in SERVER_IP/SERVER_PORT allocation vars.
+     */
     public function getEggManagedIniKeys(): array
     {
         return [
@@ -150,10 +161,13 @@ class PalworldSettingsSchema
             'RCONPort',
             'PublicIP',
             'PublicPort',
-            'bEnableInvaderEnemy',
         ];
     }
 
+    /**
+     * Startup variable names to surface read-only, aligned with the stock
+     * games-steamcmd/palworld egg's declared variables.
+     */
     public function getStartupVariableNames(): array
     {
         return [
@@ -165,9 +179,8 @@ class PalworldSettingsSchema
             'RCON_ENABLE',
             'RCON_PORT',
             'PUBLIC_IP',
-            'SERVER_PORT',
+            'ALLOW_CONNECT_PLATFORM',
             'AUTO_UPDATE',
-            'ENABLE_ENEMY',
         ];
     }
 
@@ -285,5 +298,86 @@ class PalworldSettingsSchema
     public function getFieldTooltip(string $fieldKey): string
     {
         return $fieldKey;
+    }
+
+    /**
+     * Best-effort Palworld default values, sourced from the official
+     * PalworldServerConfigParser reference defaults. Used by "Reset to defaults"
+     * when the game's shipped DefaultPalWorldSettings.ini cannot be read.
+     *
+     * @return array<string, mixed>
+     */
+    public function getDefaultValues(): array
+    {
+        return [
+            // Gameplay rates
+            'ExpRate' => 1.0, 'PalCaptureRate' => 1.0, 'PalSpawnNumRate' => 1.0,
+            'PalEggDefaultHatchingTime' => 72.0, 'CollectionDropRate' => 1.0,
+            'CollectionObjectHpRate' => 1.0, 'CollectionObjectRespawnSpeedRate' => 1.0,
+            'EnemyDropItemRate' => 1.0, 'SupplyDropSpan' => 180, 'WorkSpeedRate' => 1.0,
+            // Damage, stamina, hunger, HP
+            'PlayerDamageRateAttack' => 1.0, 'PlayerDamageRateDefense' => 1.0,
+            'PlayerStomachDecreaceRate' => 1.0, 'PlayerStaminaDecreaceRate' => 1.0,
+            'PlayerAutoHPRegeneRate' => 1.0, 'PlayerAutoHpRegeneRateInSleep' => 1.0,
+            'PalDamageRateAttack' => 1.0, 'PalDamageRateDefense' => 1.0,
+            'PalStomachDecreaceRate' => 1.0, 'PalStaminaDecreaceRate' => 1.0,
+            'PalAutoHPRegeneRate' => 1.0, 'PalAutoHpRegeneRateInSleep' => 1.0,
+            'ItemWeightRate' => 1.0, 'EquipmentDurabilityDamageRate' => 1.0,
+            // Time and world behaviour
+            'DayTimeSpeedRate' => 1.0, 'NightTimeSpeedRate' => 1.0,
+            'BuildObjectHpRate' => 1.0, 'BuildObjectDamageRate' => 1.0,
+            'BuildObjectDeteriorationDamageRate' => 1.0,
+            'bEnableFastTravel' => true, 'bEnableFastTravelOnlyBaseCamp' => false,
+            'bIsStartLocationSelectByMap' => true, 'bExistPlayerAfterLogout' => false,
+            'bEnableDefenseOtherGuildPlayer' => false, 'bIsShowJoinLeftMessage' => true,
+            'bEnableInvaderEnemy' => true, 'bUseAuth' => true, 'bIsUseBackupSaveData' => true,
+            'AutoSaveSpan' => 30, 'BanListURL' => 'https://api.palworldgame.com/api/banlist.txt',
+            'LogFormatType' => 'Text', 'CrossplayPlatforms' => '(Steam,Xbox,PS5,Mac)',
+            // Death and difficulty
+            'Difficulty' => 'None', 'DeathPenalty' => 'All', 'RandomizerType' => 'None',
+            'RandomizerSeed' => '', 'bIsRandomizerPalLevelRandom' => false,
+            'bHardcore' => false, 'bPalLost' => false, 'bEnablePlayerToPlayerDamage' => false,
+            'bEnableFriendlyFire' => false, 'bEnableNonLoginPenalty' => true,
+            'bCanPickupOtherGuildDeathPenaltyDrop' => false,
+            'RespawnPenaltyDurationThreshold' => 0.0, 'RespawnPenaltyTimeScale' => 0.0,
+            // Base, guild, and limits
+            'BaseCampMaxNum' => 128, 'BaseCampWorkerMaxNum' => 15, 'BaseCampMaxNumInGuild' => 3,
+            'GuildPlayerMaxNum' => 20, 'DropItemMaxNum' => 3000, 'DropItemMaxNum_UNKO' => 100,
+            'DropItemAliveMaxHours' => 1.0, 'CoopPlayerMaxNum' => 4,
+            'AutoResetGuildTimeNoOnlinePlayers' => 72.0, 'bAutoResetGuildNoOnlinePlayers' => false,
+            'MaxBuildingLimitNum' => 0,
+            // Advanced / present-only
+            'bActiveUNKO' => false, 'bEnableAimAssistPad' => true, 'bEnableAimAssistKeyboard' => false,
+            'bIsMultiplay' => false, 'bIsPvP' => false, 'bCharacterRecreateInHardcore' => false,
+            'Region' => '', 'ChatPostLimitPerMinute' => 10, 'RESTAPIEnabled' => false,
+            'RESTAPIPort' => 8212, 'bShowPlayerList' => false, 'EnablePredatorBossPal' => true,
+            'ServerReplicatePawnCullDistance' => 15000.0, 'bAllowGlobalPalboxExport' => true,
+            'bAllowGlobalPalboxImport' => false, 'ItemContainerForceMarkDirtyInterval' => 1.0,
+            'ItemCorruptionMultiplier' => 1.0, 'bBuildAreaLimit' => false,
+            'bInvisibleOtherGuildBaseCampAreaFX' => false,
+        ];
+    }
+
+    /**
+     * Resolve a field's default value, falling back to a sensible type-based
+     * default when the field is not in the reference defaults map.
+     */
+    public function getDefaultValue(string $fieldKey, mixed $fallback = null): mixed
+    {
+        $defaults = $this->getDefaultValues();
+
+        if (array_key_exists($fieldKey, $defaults)) {
+            return $defaults[$fieldKey];
+        }
+
+        $definition = $this->getFieldDefinition($fieldKey);
+
+        return match ($definition['type'] ?? 'string') {
+            'boolean' => false,
+            'number' => 1.0,
+            'integer' => 0,
+            'enum' => $definition['options'][0] ?? ($fallback ?? ''),
+            default => '',
+        };
     }
 }
