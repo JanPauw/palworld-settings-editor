@@ -129,7 +129,7 @@ class PalworldSettingsPage extends Page
         PalworldSettingsSchema $settingsSchema,
     ): void {
         $server = Filament::getTenant();
-        $this->settingsPath = (string) config('palworld-settings-editor.settings_path');
+        $this->settingsPath = (string) config('palworld-settings-editor.settings_path', 'Pal/Saved/Config/LinuxServer/PalWorldSettings.ini');
 
         $this->isSafeToEdit = $serverStateService->isSafeToEdit($server);
         $this->stateLabel = $serverStateService->getStateLabel($server);
@@ -316,7 +316,7 @@ class PalworldSettingsPage extends Page
             $this->validateFormData();
 
             $contents = $settingsFileService->read($server, $this->settingsPath);
-            $backupPath = $this->settingsPath . '.bak-' . now()->format((string) config('palworld-settings-editor.backup_suffix_format'));
+            $backupPath = $this->settingsPath . '.bak-' . now()->format((string) config('palworld-settings-editor.backup_suffix_format', 'Ymd-His'));
 
             $settingsFileService->copy($server, $this->settingsPath, $backupPath);
             $this->lastBackupPath = $backupPath;
