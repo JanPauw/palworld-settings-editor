@@ -25,7 +25,10 @@ out of their way and only touches what's safe to change.
 ## Features
 
 - **Native panel integration** — adds a *Palworld Settings* page to the Pelican
-  server sidebar, styled to sit naturally alongside the built-in *Startup* page.
+  server sidebar using native Filament controls and the panel's own page layout,
+  so it sits naturally alongside the built-in *Startup* and *Settings* pages.
+- **Palworld-only** — the page only appears on Palworld servers, detected from the
+  server egg (tags, name, and startup command).
 - **Typed controls** — numbers, integers, toggles, text fields, and enums, each
   with sensible min/max/step bounds, labels, helper text, and tooltips.
 - **Grouped settings** — organized into readable sections:
@@ -146,12 +149,13 @@ may generate the config elsewhere and aren't the primary target of this version.
 | Path | Responsibility |
 | --- | --- |
 | `src/Filament/Server/Pages/PalworldSettingsPage.php` | The settings page: loads state, builds the form, validates and writes saves. |
-| `src/PalworldSettingsEditorPlugin.php` | Plugin registration and a small CSS hook for spacing polish. |
+| `src/PalworldSettingsEditorPlugin.php` | Plugin registration and server-panel page discovery. |
 | `src/Services/PalworldSettingsSchema.php` | Field definitions, labels, groups, bounds, and tooltips. |
 | `src/Services/PalworldOptionSettingsParser.php` | Parses and rewrites the `OptionSettings=(...)` payload. |
-| `src/Services/PalworldSettingsFileService.php` | File read/write/backup through Pelican. |
-| `src/Services/PelicanServerStateService.php` | Server state detection and "safe to edit" logic. |
+| `src/Services/PalworldSettingsFileService.php` | File read/write/backup through Pelican's daemon file API. |
+| `src/Services/PelicanServerStateService.php` | Server state detection (native `retrieveStatus()`) and "safe to edit" logic. |
 | `src/Services/PelicanStartupVariableService.php` | Startup-variable lookup and read-only display. |
+| `src/Services/PalworldServerDetector.php` | Detects whether a server runs Palworld to scope page visibility. |
 
 ## Contributing
 
