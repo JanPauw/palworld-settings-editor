@@ -15,6 +15,7 @@ use Filament\Pages\Page;
 use Filament\Schemas\Components\Component;
 use Filament\Schemas\Components\Section;
 use JanPauw\PalworldSettingsEditor\Services\PalworldOptionSettingsParser;
+use JanPauw\PalworldSettingsEditor\Services\PalworldServerDetector;
 use JanPauw\PalworldSettingsEditor\Services\PalworldSettingsFileService;
 use JanPauw\PalworldSettingsEditor\Services\PalworldSettingsSchema;
 use JanPauw\PalworldSettingsEditor\Services\PelicanServerStateService;
@@ -88,7 +89,11 @@ class PalworldSettingsPage extends Page
 
     public static function canAccess(): bool
     {
-        return parent::canAccess() && Filament::getTenant() !== null;
+        $server = Filament::getTenant();
+
+        return parent::canAccess()
+            && $server !== null
+            && PalworldServerDetector::isPalworldServer($server);
     }
 
     public static function getNavigationLabel(): string
