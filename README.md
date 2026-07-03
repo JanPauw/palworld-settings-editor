@@ -55,8 +55,8 @@ out of their way and only touches what's safe to change.
 
 ## Installation
 
-1. Download the packaged `palworld-settings-editor.zip` (see
-   [Building from source](#building-from-source) to produce it yourself).
+1. Get the plugin as a zip containing a top-level `palworld-settings-editor/`
+   directory (clone this repo and zip the folder, or grab a release archive).
 2. Upload the zip through the Pelican **admin → plugins** UI, or drop it into the
    panel's `plugins` directory.
 3. Install/enable the plugin in Pelican.
@@ -73,19 +73,6 @@ out of their way and only touches what's safe to change.
 > Startup-managed values (server name, passwords, RCON, public IP/port) are shown
 > read-only. Change those from the server's **Startup** tab — the egg manages them
 > and may overwrite the INI on boot.
-
-## Building from source
-
-The repo root is the plugin. To produce an upload-ready archive at
-`dist/palworld-settings-editor.zip`:
-
-```powershell
-.\zip-plugin.ps1
-```
-
-The script stages the plugin under a top-level `palworld-settings-editor/`
-directory inside the zip (the layout Pelican expects) and excludes tooling such
-as `dist/`, `.git/`, and the packaging script itself.
 
 ## Configuration
 
