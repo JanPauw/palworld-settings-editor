@@ -1,0 +1,21 @@
+{
+    "id": "palworld-settings-editor",
+    "name": "Palworld Settings Editor",
+    "author": "Jan Pauw",
+    "version": "1.0.0",
+    "description": "Safely edit Palworld gameplay settings from Pelican Panel.",
+    "category": "plugin",
+    "url": null,
+    "update_url": null,
+    "namespace": "JanPauw\\PalworldSettingsEditor",
+    "class": "PalworldSettingsEditorPlugin",
+    "panels": [
+        "server"
+    ],
+    "panel_version": null,
+    "composer_packages": null,
+    "meta": {
+        "status": "enabled",
+        "status_message": null
+    }
+}

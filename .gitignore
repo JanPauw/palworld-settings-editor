@@ -1,0 +1,14 @@
+# Build output
+/dist/
+*.zip
+
+# Dependencies (not committed)
+/vendor/
+/node_modules/
+
+# OS / editor cruft
+.DS_Store
+Thumbs.db
+*.swp
+.idea/
+.vscode/
