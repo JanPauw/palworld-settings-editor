@@ -38,10 +38,15 @@ out of their way and only touches what's safe to change.
   - Death and Difficulty
   - Base, Guild, and Limits
   - Advanced / present-only fields
-- **Safe-by-default saving** — writes are blocked unless the live daemon state
-  resolves to offline/stopped.
-- **Automatic backups** — a timestamped copy of the config is created before
-  every successful save.
+- **Safe-by-default saving** — writes are blocked unless the server's power state
+  resolves to offline/stopped (via Pelican's native `retrieveStatus()`).
+- **Backups manager** — a timestamped copy of the config is created before every
+  save, and existing backups can be **restored** (the current file is backed up
+  first) or **deleted** right from the page.
+- **Reset to Palworld defaults** — refill the form with Palworld's default values
+  (from the game's `DefaultPalWorldSettings.ini` when available); nothing is written
+  until you press Save.
+- **Expand / collapse all** — quickly open or close every settings section.
 - **Non-destructive rewrites** — unknown `OptionSettings` keys are preserved when
   the file is written back.
 - **Respects egg-managed values** — startup-variable values (server name,
@@ -101,8 +106,25 @@ Developer diagnostics are hidden by default. To surface the debug section, set:
 - Edit arbitrary host paths outside Pelican's server file abstractions.
 - Enable editing while the server is running, starting, stopping, suspended, or
   in an unconfirmed state.
-- Restore backups from the panel UI (backups are written, not yet restorable
-  in-app).
+
+## Compatibility with the Palworld egg
+
+This plugin is built for the official
+[games-steamcmd/palworld](https://github.com/pelican-eggs/games-steamcmd/tree/main/palworld)
+egg and its
+[PalworldServerConfigParser](https://github.com/pelican-eggs/Palworld-Config-Parser-Tool).
+
+The config parser runs on every boot but does an **in-place** update of only the INI
+keys whose startup variables are set (server name, passwords, RCON, max players, IP/port)
+and preserves everything else. This plugin edits a **disjoint** set of gameplay/world
+keys, so your edits are not overwritten on restart. The keys the egg manages are shown
+read-only here — change those from the **Startup** tab instead.
+
+> [!NOTE]
+> If you add your own egg variable for a gameplay setting this plugin also edits, the
+> parser will set that key from the variable on boot. With the stock egg there is no
+> overlap. On Proton/Windows servers the config lives under `WindowsServer/` — the plugin
+> falls back to that path automatically.
 
 ## Troubleshooting
 
