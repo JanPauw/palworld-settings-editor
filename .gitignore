@@ -8,6 +8,7 @@
 
 # Internal / contributor handoff docs (not published)
 CLAUDE_HANDOFF.md
+palworld-settings-editor-codex-prompt.md
 
 # OS / editor cruft
 .DS_Store
