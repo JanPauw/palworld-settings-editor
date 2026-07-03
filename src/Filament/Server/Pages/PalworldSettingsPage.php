@@ -3,7 +3,6 @@
 namespace JanPauw\PalworldSettingsEditor\Filament\Server\Pages;
 
 use Filament\Actions\Action;
-use Filament\Actions\ActionGroup;
 use Filament\Facades\Filament;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
@@ -282,29 +281,29 @@ class PalworldSettingsPage extends Page
     protected function getHeaderActions(): array
     {
         return [
-            ActionGroup::make([
-                Action::make('expandAll')
-                    ->label('Expand all sections')
-                    ->icon('tabler-chevrons-down')
-                    ->action('expandAll'),
-                Action::make('collapseAll')
-                    ->label('Collapse all sections')
-                    ->icon('tabler-chevrons-up')
-                    ->action('collapseAll'),
-                Action::make('resetDefaults')
-                    ->label('Reset to Palworld defaults')
-                    ->icon('tabler-restore')
-                    ->color('warning')
-                    ->requiresConfirmation()
-                    ->modalHeading('Reset to Palworld defaults')
-                    ->modalDescription('Fill the form with Palworld default values. Nothing is written until you press Save.')
-                    ->disabled(fn (): bool => ! $this->canSave())
-                    ->action('resetToDefaults'),
-            ])
-                ->label('More')
-                ->icon('tabler-dots-vertical')
-                ->button()
-                ->color('gray'),
+            Action::make('expandAll')
+                ->label('Expand all sections')
+                ->tooltip('Expand all sections')
+                ->iconButton()
+                ->icon('tabler-chevrons-down')
+                ->color('gray')
+                ->action('expandAll'),
+            Action::make('collapseAll')
+                ->label('Collapse all sections')
+                ->tooltip('Collapse all sections')
+                ->iconButton()
+                ->icon('tabler-chevrons-up')
+                ->color('gray')
+                ->action('collapseAll'),
+            Action::make('resetDefaults')
+                ->label('Reset to defaults')
+                ->icon('tabler-restore')
+                ->color('gray')
+                ->requiresConfirmation()
+                ->modalHeading('Reset to Palworld defaults')
+                ->modalDescription('Fill the form with Palworld default values. Nothing is written until you press Save.')
+                ->disabled(fn (): bool => ! $this->canSave())
+                ->action('resetToDefaults'),
             Action::make('resetChanges')
                 ->label('Reset changes')
                 ->icon('tabler-arrow-back')
