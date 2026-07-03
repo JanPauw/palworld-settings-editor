@@ -2,6 +2,9 @@
 /dist/
 *.zip
 
+# Packaging / tooling scripts (kept out of the plugin repo)
+*.ps1
+
 # Dependencies (not committed)
 /vendor/
 /node_modules/
