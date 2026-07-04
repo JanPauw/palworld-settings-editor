@@ -283,8 +283,13 @@ class PalworldOptionSettingsParser
             return '""';
         }
 
-        if (is_int($value) || is_float($value)) {
-            return $this->formatNumericString((string) $value);
+        if (is_int($value)) {
+            return (string) $value;
+        }
+
+        if (is_float($value)) {
+            // Palworld writes float settings with 6 decimals; keep that format for parity.
+            return number_format($value, 6, '.', '');
         }
 
         $stringValue = (string) $value;
@@ -313,15 +318,6 @@ class PalworldOptionSettingsParser
         }
 
         return '"' . addcslashes($stringValue, "\\\"") . '"';
-    }
-
-    private function formatNumericString(string $value): string
-    {
-        if (! str_contains($value, '.')) {
-            return $value;
-        }
-
-        return number_format((float) $value, 6, '.', '');
     }
 
     /**

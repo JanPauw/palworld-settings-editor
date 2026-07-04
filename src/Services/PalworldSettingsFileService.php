@@ -77,7 +77,7 @@ class PalworldSettingsFileService
                 continue;
             }
 
-            if ((bool) data_get($entry, 'directory', false)) {
+            if (! (bool) data_get($entry, 'file', true)) {
                 continue;
             }
 

@@ -1664,8 +1664,14 @@ class PalworldSettingsPage extends Page
 
         if ($item['type'] === 'enum') {
             $allowed = $item['options'] ?? [];
-            if ($item['value'] !== null && ! in_array((string) $item['value'], $allowed, true)) {
-                $allowed[] = (string) $item['value'];
+
+            // Allow both the mount-time file value and the current form value (which a preset
+            // or reset-to-defaults may have set) so a legitimate on-disk/default value outside
+            // the known options isn't rejected on save.
+            foreach ([$item['value'] ?? null, $this->formData[$item['key']] ?? null] as $candidate) {
+                if ($candidate !== null && $candidate !== '' && ! in_array((string) $candidate, $allowed, true)) {
+                    $allowed[] = (string) $candidate;
+                }
             }
 
             if ($allowed !== []) {

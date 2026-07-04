@@ -18,7 +18,7 @@ class PalworldSettingsSchema
                     'CollectionObjectHpRate' => ['label' => 'Collection Object HP Rate', 'type' => 'number', 'min' => 0, 'max' => 20, 'step' => 0.1],
                     'CollectionObjectRespawnSpeedRate' => ['label' => 'Collection Respawn Speed Rate', 'type' => 'number', 'min' => 0, 'max' => 20, 'step' => 0.1],
                     'EnemyDropItemRate' => ['label' => 'Enemy Drop Item Rate', 'type' => 'number', 'min' => 0, 'max' => 20, 'step' => 0.1],
-                    'SupplyDropSpan' => ['label' => 'Supply Drop Span', 'type' => 'number', 'min' => 0, 'max' => 100000, 'step' => 1],
+                    'SupplyDropSpan' => ['label' => 'Supply Drop Span', 'type' => 'integer', 'min' => 0, 'max' => 100000],
                     'WorkSpeedRate' => ['label' => 'Work Speed Rate', 'type' => 'number', 'min' => 0, 'max' => 20, 'step' => 0.1],
                 ],
             ],
