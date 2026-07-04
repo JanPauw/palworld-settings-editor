@@ -16,15 +16,15 @@ use Filament\Pages\Page;
 use Filament\Schemas\Components\Actions;
 use Filament\Schemas\Components\Component;
 use Filament\Schemas\Components\Section;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Validator;
+use Illuminate\Support\HtmlString;
 use JanPauw\PalworldSettingsEditor\Services\PalworldOptionSettingsParser;
 use JanPauw\PalworldSettingsEditor\Services\PalworldServerDetector;
 use JanPauw\PalworldSettingsEditor\Services\PalworldSettingsFileService;
 use JanPauw\PalworldSettingsEditor\Services\PalworldSettingsSchema;
 use JanPauw\PalworldSettingsEditor\Services\PelicanServerStateService;
 use JanPauw\PalworldSettingsEditor\Services\PelicanStartupVariableService;
-use Illuminate\Support\Facades\Http;
-use Illuminate\Support\Facades\Validator;
-use Illuminate\Support\HtmlString;
 use Throwable;
 
 class PalworldSettingsPage extends Page
@@ -112,7 +112,8 @@ class PalworldSettingsPage extends Page
 
         return parent::canAccess()
             && $server !== null
-            && PalworldServerDetector::isPalworldServer($server);
+            && PalworldServerDetector::isPalworldServer($server)
+            && (bool) user()?->can(SubuserPermission::FileReadContent, $server);
     }
 
     public static function getNavigationLabel(): string
@@ -176,10 +177,12 @@ class PalworldSettingsPage extends Page
                 }
             }
         } catch (Throwable $throwable) {
+            report($throwable);
+
             if ($this->optionSettingsLine !== null) {
-                $this->settingsParseError = $throwable->getMessage();
+                $this->settingsParseError = 'The OptionSettings line in PalWorldSettings.ini could not be parsed.';
             } else {
-                $this->settingsFileError = $throwable->getMessage();
+                $this->settingsFileError = 'PalWorldSettings.ini could not be read. Check the node/daemon connection and file access.';
             }
         }
 
@@ -325,6 +328,7 @@ class PalworldSettingsPage extends Page
                 ->icon('tabler-wand')
                 ->color('gray')
                 ->disabled(fn (): bool => ! $this->canSave())
+                ->authorize(fn (): bool => (bool) user()?->can(SubuserPermission::FileUpdate, Filament::getTenant()))
                 ->modalHeading('Apply a preset')
                 ->modalDescription('Fill the form with a themed set of values. Only settings present in this server\'s file are changed, and nothing is written until you press Save.')
                 ->modalSubmitActionLabel('Apply preset')
@@ -347,6 +351,7 @@ class PalworldSettingsPage extends Page
                 ->modalHeading('Reset to Palworld defaults')
                 ->modalDescription('Fill the form with Palworld default values. Nothing is written until you press Save.')
                 ->disabled(fn (): bool => ! $this->canSave())
+                ->authorize(fn (): bool => (bool) user()?->can(SubuserPermission::FileUpdate, Filament::getTenant()))
                 ->action('resetToDefaults'),
             Action::make('resetChanges')
                 ->label('Reset changes')
@@ -359,6 +364,7 @@ class PalworldSettingsPage extends Page
                 ->icon('tabler-device-floppy')
                 ->color('primary')
                 ->disabled(fn (): bool => ! $this->canSave())
+                ->authorize(fn (): bool => (bool) user()?->can(SubuserPermission::FileUpdate, Filament::getTenant()))
                 ->keyBindings(['mod+s'])
                 ->requiresConfirmation()
                 ->modalHeading('Review changes before saving')
@@ -414,7 +420,7 @@ class PalworldSettingsPage extends Page
     public function hasUnsavedChanges(): bool
     {
         foreach ($this->getEditableFieldKeys() as $key) {
-            if (($this->parsedSettings[$key] ?? null) !== ($this->formData[$key] ?? null)) {
+            if (! $this->valuesEqual($this->parsedSettings[$key] ?? null, $this->formData[$key] ?? null)) {
                 return true;
             }
         }
@@ -435,7 +441,7 @@ class PalworldSettingsPage extends Page
             $old = $this->parsedSettings[$key] ?? null;
             $new = $this->formData[$key] ?? null;
 
-            if ($old === $new) {
+            if ($this->valuesEqual($old, $new)) {
                 continue;
             }
 
@@ -472,6 +478,24 @@ class PalworldSettingsPage extends Page
         return (string) $value;
     }
 
+    /**
+     * Type-aware equality for change detection. Numeric fields come back from
+     * Filament as floats (NumberStateCast) while the parsed file values are strings,
+     * so numeric values are compared by float value; booleans strictly; the rest as strings.
+     */
+    private function valuesEqual(mixed $a, mixed $b): bool
+    {
+        if (is_bool($a) || is_bool($b)) {
+            return $a === $b;
+        }
+
+        if (is_numeric($a) && is_numeric($b)) {
+            return (float) $a === (float) $b;
+        }
+
+        return (string) $a === (string) $b;
+    }
+
     public function save(): void
     {
         $serverStateService = app(PelicanServerStateService::class);
@@ -479,11 +503,29 @@ class PalworldSettingsPage extends Page
         $settingsParser = app(PalworldOptionSettingsParser::class);
         $server = Filament::getTenant();
 
+        if (! (bool) user()?->can(SubuserPermission::FileUpdate, $server)) {
+            $this->denyPermission();
+
+            return;
+        }
+
         if (! $serverStateService->isSafeToEdit($server)) {
             Notification::make()
                 ->title('Server must be stopped')
                 ->body('Stop the server before changing Palworld settings.')
                 ->warning()
+                ->send();
+
+            return;
+        }
+
+        $changes = $this->getChangedFormData();
+
+        if ($changes === []) {
+            Notification::make()
+                ->title('No changes to save')
+                ->body('The form already matches the current PalWorldSettings.ini.')
+                ->info()
                 ->send();
 
             return;
@@ -499,7 +541,7 @@ class PalworldSettingsPage extends Page
             $this->lastBackupPath = $backupPath;
             $this->lastSavedAt = now()->toDateTimeString();
 
-            $updatedContents = $settingsParser->write($contents, $this->getEditableFormData());
+            $updatedContents = $settingsParser->write($contents, $changes);
             $settingsFileService->write($server, $this->settingsPath, $updatedContents);
 
             $this->optionSettingsLine = $settingsFileService->getOptionSettingsLine($updatedContents);
@@ -519,9 +561,11 @@ class PalworldSettingsPage extends Page
                 ->success()
                 ->send();
         } catch (Throwable $throwable) {
+            report($throwable);
+
             Notification::make()
                 ->title('Save failed')
-                ->body($throwable->getMessage())
+                ->body('Could not save the settings. Please try again or check the server file access.')
                 ->danger()
                 ->send();
         }
@@ -553,11 +597,18 @@ class PalworldSettingsPage extends Page
 
     public function resetToDefaults(): void
     {
+        $server = Filament::getTenant();
+
+        if (! (bool) user()?->can(SubuserPermission::FileUpdate, $server)) {
+            $this->denyPermission();
+
+            return;
+        }
+
         if (! $this->canSave()) {
             return;
         }
 
-        $server = Filament::getTenant();
         $fileService = app(PalworldSettingsFileService::class);
         $parser = app(PalworldOptionSettingsParser::class);
         $schema = $this->settingsSchema();
@@ -593,6 +644,12 @@ class PalworldSettingsPage extends Page
 
     public function applyPreset(string $preset): void
     {
+        if (! (bool) user()?->can(SubuserPermission::FileUpdate, Filament::getTenant())) {
+            $this->denyPermission();
+
+            return;
+        }
+
         if (! $this->canSave()) {
             return;
         }
@@ -652,11 +709,19 @@ class PalworldSettingsPage extends Page
     {
         $server = Filament::getTenant();
 
-        $permission = $action === 'restart'
-            ? SubuserPermission::ControlRestart
-            : SubuserPermission::ControlStart;
+        // Only start/restart are supported; map each to its exact permission so a
+        // crafted request cannot run stop/kill under the start permission.
+        $permission = match ($action) {
+            'start' => SubuserPermission::ControlStart,
+            'restart' => SubuserPermission::ControlRestart,
+            default => null,
+        };
 
-        if (! user()?->can($permission, $server)) {
+        if ($permission === null) {
+            return;
+        }
+
+        if (! (bool) user()?->can($permission, $server)) {
             Notification::make()
                 ->title('Not permitted')
                 ->body('You do not have permission to control this server\'s power state.')
@@ -683,9 +748,11 @@ class PalworldSettingsPage extends Page
                 ->success()
                 ->send();
         } catch (Throwable $throwable) {
+            report($throwable);
+
             Notification::make()
                 ->title('Power action failed')
-                ->body($throwable->getMessage())
+                ->body('Could not send the power action to the server. Please try again.')
                 ->danger()
                 ->send();
         }
@@ -696,6 +763,18 @@ class PalworldSettingsPage extends Page
         $server = Filament::getTenant();
         $serverStateService = app(PelicanServerStateService::class);
         $fileService = app(PalworldSettingsFileService::class);
+
+        if (! (bool) user()?->can(SubuserPermission::FileUpdate, $server)) {
+            $this->denyPermission();
+
+            return;
+        }
+
+        if (! $this->isKnownBackup($backupName)) {
+            $this->denyUnknownBackup();
+
+            return;
+        }
 
         if (! $serverStateService->isSafeToEdit($server)) {
             Notification::make()
@@ -727,9 +806,11 @@ class PalworldSettingsPage extends Page
                 ->success()
                 ->send();
         } catch (Throwable $throwable) {
+            report($throwable);
+
             Notification::make()
                 ->title('Restore failed')
-                ->body($throwable->getMessage())
+                ->body('Could not restore the backup. Please try again.')
                 ->danger()
                 ->send();
         }
@@ -739,6 +820,18 @@ class PalworldSettingsPage extends Page
     {
         $server = Filament::getTenant();
         $fileService = app(PalworldSettingsFileService::class);
+
+        if (! (bool) user()?->can(SubuserPermission::FileDelete, $server)) {
+            $this->denyPermission();
+
+            return;
+        }
+
+        if (! $this->isKnownBackup($backupName)) {
+            $this->denyUnknownBackup();
+
+            return;
+        }
 
         try {
             $fileService->deleteBackup($server, $this->settingsPath, $backupName);
@@ -750,9 +843,11 @@ class PalworldSettingsPage extends Page
                 ->success()
                 ->send();
         } catch (Throwable $throwable) {
+            report($throwable);
+
             Notification::make()
                 ->title('Delete failed')
-                ->body($throwable->getMessage())
+                ->body('Could not delete the backup. Please try again.')
                 ->danger()
                 ->send();
         }
@@ -792,10 +887,12 @@ class PalworldSettingsPage extends Page
                 }
             }
         } catch (Throwable $throwable) {
+            report($throwable);
+
             if ($this->optionSettingsLine !== null) {
-                $this->settingsParseError = $throwable->getMessage();
+                $this->settingsParseError = 'The OptionSettings line in PalWorldSettings.ini could not be parsed.';
             } else {
-                $this->settingsFileError = $throwable->getMessage();
+                $this->settingsFileError = 'PalWorldSettings.ini could not be read. Check the node/daemon connection and file access.';
             }
         }
 
@@ -809,6 +906,44 @@ class PalworldSettingsPage extends Page
         $directory = $position === false ? '' : substr($this->settingsPath, 0, $position);
 
         return ($directory === '' ? '' : $directory . '/') . $backupName;
+    }
+
+    /**
+     * Only allow acting on a backup that is in the current backup list and has no
+     * path separators / traversal — the name comes from the client and must never
+     * be used to reach arbitrary files.
+     */
+    private function isKnownBackup(string $backupName): bool
+    {
+        if ($backupName === '' || str_contains($backupName, '/') || str_contains($backupName, '\\') || str_contains($backupName, '..')) {
+            return false;
+        }
+
+        foreach ($this->backups as $backup) {
+            if (($backup['name'] ?? null) === $backupName) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function denyPermission(): void
+    {
+        Notification::make()
+            ->title('Not permitted')
+            ->body('You do not have permission to perform this action on this server.')
+            ->danger()
+            ->send();
+    }
+
+    private function denyUnknownBackup(): void
+    {
+        Notification::make()
+            ->title('Backup not found')
+            ->body('That backup could not be found. Reload the page and try again.')
+            ->danger()
+            ->send();
     }
 
     /**
@@ -1082,6 +1217,7 @@ class PalworldSettingsPage extends Page
                         ->modalHeading('Restore backup')
                         ->modalDescription('Restore this backup over the current PalWorldSettings.ini? The current file is backed up first. The server must be stopped.')
                         ->disabled(fn (): bool => ! $this->isSafeToEdit)
+                        ->authorize(fn (): bool => (bool) user()?->can(SubuserPermission::FileUpdate, Filament::getTenant()))
                         ->action(fn () => $this->restoreBackup($name)),
                     Action::make('delete_' . $hash)
                         ->label('Delete')
@@ -1090,6 +1226,7 @@ class PalworldSettingsPage extends Page
                         ->requiresConfirmation()
                         ->modalHeading('Delete backup')
                         ->modalDescription('Permanently delete this backup file?')
+                        ->authorize(fn (): bool => (bool) user()?->can(SubuserPermission::FileDelete, Filament::getTenant()))
                         ->action(fn () => $this->deleteBackup($name)),
                 ])
                     ->columnSpan(1);
@@ -1259,8 +1396,9 @@ class PalworldSettingsPage extends Page
     private function getStateColor(): string
     {
         return match (strtolower($this->stateLabel)) {
-            'offline', 'stopped' => 'success',
-            'running', 'starting', 'stopping' => 'warning',
+            'offline', 'exited' => 'success',
+            'running', 'starting', 'stopping', 'restarting' => 'warning',
+            'dead', 'missing', 'removing' => 'danger',
             default => 'gray',
         };
     }
@@ -1292,17 +1430,25 @@ class PalworldSettingsPage extends Page
     }
 
     /**
+     * Editable keys whose form value differs from the current file value, so save()
+     * rewrites only what actually changed (leaving untouched entries byte-for-byte).
+     *
      * @return array<string, mixed>
      */
-    private function getEditableFormData(): array
+    private function getChangedFormData(): array
     {
-        $editable = [];
+        $changed = [];
 
         foreach ($this->getEditableFieldKeys() as $key) {
-            $editable[$key] = $this->formData[$key] ?? null;
+            $old = $this->parsedSettings[$key] ?? null;
+            $new = $this->formData[$key] ?? null;
+
+            if (! $this->valuesEqual($old, $new)) {
+                $changed[$key] = $new;
+            }
         }
 
-        return $editable;
+        return $changed;
     }
 
     private function validateFormData(): void

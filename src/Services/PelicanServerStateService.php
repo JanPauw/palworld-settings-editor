@@ -9,8 +9,8 @@ use Throwable;
  * safe to edit the Palworld settings file.
  *
  * This relies on Pelican core's native Server::retrieveStatus() (a ContainerStatus
- * enum exposing isOffline()), the same API the official mclogs-uploader plugin uses,
- * rather than probing the daemon HTTP API directly.
+ * enum) and treats only a confirmed offline/stopped state as safe to edit, rather
+ * than probing the daemon HTTP API directly.
  */
 class PelicanServerStateService
 {
@@ -39,6 +39,12 @@ class PelicanServerStateService
 
         if ($this->isSafeToEdit($server)) {
             return 'This server is stopped, so Palworld settings can be edited safely. Restart the server after saving for changes to take effect.';
+        }
+
+        $value = $this->statusValue($status);
+
+        if ($value === null || $value === 'missing') {
+            return 'Editing is disabled because the current server state could not be confirmed. Check the node/daemon connection and reload the page.';
         }
 
         return 'Editing is disabled because the server is not stopped. Stop the server first, otherwise Palworld or the egg may overwrite your changes on start.';
@@ -81,15 +87,10 @@ class PelicanServerStateService
 
     private function statusIsOffline(mixed $status): bool
     {
-        try {
-            if (is_object($status) && method_exists($status, 'isOffline')) {
-                return (bool) $status->isOffline();
-            }
-        } catch (Throwable) {
-            return false;
-        }
-
-        return in_array($this->statusValue($status), ['offline', 'stopped', 'off'], true);
+        // Only a confirmed stopped/offline state is safe to edit. Deliberately does
+        // NOT use ContainerStatus::isOffline(), which also returns true for "missing"
+        // (daemon unreachable / node maintenance / unknown) — that must keep editing locked.
+        return in_array($this->statusValue($status), ['offline', 'exited', 'stopped', 'off'], true);
     }
 
     private function statusValue(mixed $status): ?string
