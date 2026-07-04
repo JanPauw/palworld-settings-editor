@@ -2,6 +2,7 @@
 
 namespace JanPauw\PalworldSettingsEditor\Filament\Server\Pages;
 
+use App\Enums\SubuserPermission;
 use Filament\Actions\Action;
 use Filament\Facades\Filament;
 use Filament\Forms\Components\Select;
@@ -21,6 +22,7 @@ use JanPauw\PalworldSettingsEditor\Services\PalworldSettingsFileService;
 use JanPauw\PalworldSettingsEditor\Services\PalworldSettingsSchema;
 use JanPauw\PalworldSettingsEditor\Services\PelicanServerStateService;
 use JanPauw\PalworldSettingsEditor\Services\PelicanStartupVariableService;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\HtmlString;
 use Throwable;
@@ -364,6 +366,26 @@ class PalworldSettingsPage extends Page
                 ->modalSubmitActionLabel('Save changes')
                 ->modalContent(fn (): HtmlString => new HtmlString($this->renderSaveDiff()))
                 ->action('save'),
+            Action::make('startServer')
+                ->label('Start server')
+                ->icon('tabler-player-play')
+                ->color('success')
+                ->visible(fn (): bool => $this->isSafeToEdit && $this->settingsFileExists)
+                ->authorize(fn (): bool => (bool) user()?->can(SubuserPermission::ControlStart, Filament::getTenant()))
+                ->requiresConfirmation()
+                ->modalHeading('Start server')
+                ->modalDescription('Start the server so your saved Palworld settings are applied. Make sure you have pressed Save first.')
+                ->action(fn () => $this->sendPowerAction('start')),
+            Action::make('restartServer')
+                ->label('Restart server')
+                ->icon('tabler-reload')
+                ->color('warning')
+                ->visible(fn (): bool => ! $this->isSafeToEdit)
+                ->authorize(fn (): bool => (bool) user()?->can(SubuserPermission::ControlRestart, Filament::getTenant()))
+                ->requiresConfirmation()
+                ->modalHeading('Restart server')
+                ->modalDescription('Restart the server to apply changes. Palworld settings can only be edited safely while the server is stopped.')
+                ->action(fn () => $this->sendPowerAction('restart')),
         ];
     }
 
@@ -619,6 +641,54 @@ class PalworldSettingsPage extends Page
         }
 
         return $options;
+    }
+
+    /**
+     * Trigger a Pelican power action (start/restart) via the daemon, so an admin
+     * can apply saved settings without leaving the page. Permission-gated to match
+     * the native Console page.
+     */
+    public function sendPowerAction(string $action): void
+    {
+        $server = Filament::getTenant();
+
+        $permission = $action === 'restart'
+            ? SubuserPermission::ControlRestart
+            : SubuserPermission::ControlStart;
+
+        if (! user()?->can($permission, $server)) {
+            Notification::make()
+                ->title('Not permitted')
+                ->body('You do not have permission to control this server\'s power state.')
+                ->danger()
+                ->send();
+
+            return;
+        }
+
+        try {
+            Http::daemon($server->node)
+                ->post("/api/servers/{$server->uuid}/power", ['action' => $action])
+                ->throw();
+
+            // Refresh cached state so the header actions re-evaluate (a full reload is most reliable).
+            $stateService = app(PelicanServerStateService::class);
+            $this->isSafeToEdit = $stateService->isSafeToEdit($server);
+            $this->stateLabel = $stateService->getStateLabel($server);
+            $this->stateMessage = $stateService->getStatusMessage($server);
+
+            Notification::make()
+                ->title($action === 'restart' ? 'Restart requested' : 'Start requested')
+                ->body('Power action sent to the server. It may take a moment to change state.')
+                ->success()
+                ->send();
+        } catch (Throwable $throwable) {
+            Notification::make()
+                ->title('Power action failed')
+                ->body($throwable->getMessage())
+                ->danger()
+                ->send();
+        }
     }
 
     public function restoreBackup(string $backupName): void
