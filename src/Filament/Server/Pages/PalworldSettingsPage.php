@@ -83,10 +83,6 @@ class PalworldSettingsPage extends Page
     /** @var array<int, string> */
     public array $detectedEggManagedIniKeys = [];
 
-    public ?string $lastBackupPath = null;
-
-    public ?string $lastSavedAt = null;
-
     /** @var array<int, array{key: string, label: string, value: mixed, type: string, options?: array<int, string>}> */
     public array $quickAccessItems = [];
 
@@ -500,6 +496,15 @@ class PalworldSettingsPage extends Page
     private function valuesEqual(mixed $a, mixed $b): bool
     {
         if (is_bool($a) || is_bool($b)) {
+            // A toggle is always a real bool, while the parsed file value may be a
+            // non-canonical boolean literal ("1"/"0"/"true"). Coerce and compare as bools.
+            $boolA = is_bool($a) ? $a : filter_var($a, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
+            $boolB = is_bool($b) ? $b : filter_var($b, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
+
+            if ($boolA !== null && $boolB !== null) {
+                return $boolA === $boolB;
+            }
+
             return $a === $b;
         }
 
@@ -560,8 +565,6 @@ class PalworldSettingsPage extends Page
             $backupPath = $this->settingsPath . '.bak-' . now()->format((string) config('palworld-settings-editor.backup_suffix_format', 'Ymd-His'));
 
             $settingsFileService->copy($server, $this->settingsPath, $backupPath);
-            $this->lastBackupPath = $backupPath;
-            $this->lastSavedAt = now()->toDateTimeString();
 
             $updatedContents = $settingsParser->write($contents, $changes);
             $settingsFileService->write($server, $this->settingsPath, $updatedContents);

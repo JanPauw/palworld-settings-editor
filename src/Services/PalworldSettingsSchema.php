@@ -355,6 +355,20 @@ class PalworldSettingsSchema
             'bAllowGlobalPalboxImport' => false, 'ItemContainerForceMarkDirtyInterval' => 1.0,
             'ItemCorruptionMultiplier' => 1.0, 'bBuildAreaLimit' => false,
             'bInvisibleOtherGuildBaseCampAreaFX' => false,
+            'bAllowClientMod' => true,
+            'BlockRespawnTime' => 5.0,
+            'GuildRejoinCooldownMinutes' => 0,
+            'DenyTechnologyList' => '',
+            'bDisplayPvPItemNumOnWorldMap_BaseCamp' => false,
+            'bDisplayPvPItemNumOnWorldMap_Player' => false,
+            'AdditionalDropItemWhenPlayerKillingInPvPMode' => 'PlayerDropItem',
+            'AdditionalDropItemNumWhenPlayerKillingInPvPMode' => 1,
+            'bAdditionalDropItemWhenPlayerKillingInPvPMode' => false,
+            'bAllowEnhanceStat_Health' => true,
+            'bAllowEnhanceStat_Attack' => true,
+            'bAllowEnhanceStat_Stamina' => true,
+            'bAllowEnhanceStat_Weight' => true,
+            'bAllowEnhanceStat_WorkSpeed' => true,
         ];
     }
 

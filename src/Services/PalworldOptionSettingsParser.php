@@ -60,7 +60,14 @@ class PalworldOptionSettingsParser
             $entries
         )) . ')';
 
-        return preg_replace('/^\s*OptionSettings=.*$/m', $rebuiltLine, $contents, 1) ?? $contents;
+        // Use a callback so $ / \1 / ${x} sequences inside values are written literally
+        // instead of being interpreted as preg replacement back-references.
+        return preg_replace_callback(
+            '/^\s*OptionSettings=.*$/m',
+            static fn (array $matches): string => $rebuiltLine,
+            $contents,
+            1
+        ) ?? $contents;
     }
 
     public function parseOptionSettingsLine(string $line): array
@@ -274,7 +281,10 @@ class PalworldOptionSettingsParser
             return $stringValue;
         }
 
-        if (str_starts_with($stringValue, '(') && str_ends_with($stringValue, ')')) {
+        // Pass through a single fully-balanced tuple like (Steam,Xbox) verbatim, but NOT
+        // arbitrary text that merely starts/ends with parens (e.g. "()x=1,Evil=(y)"), which
+        // would inject extra top-level keys into the OptionSettings payload.
+        if ($this->isSingleBalancedGroup($stringValue)) {
             return $stringValue;
         }
 
@@ -288,5 +298,40 @@ class PalworldOptionSettingsParser
         }
 
         return number_format((float) $value, 6, '.', '');
+    }
+
+    /**
+     * True only if the whole string is one balanced parenthesised group, e.g. "(Steam,Xbox)".
+     * "()x=1" or "(a)(b)" return false so they get quoted rather than passed through raw.
+     */
+    private function isSingleBalancedGroup(string $value): bool
+    {
+        if (! str_starts_with($value, '(') || ! str_ends_with($value, ')')) {
+            return false;
+        }
+
+        $depth = 0;
+        $length = strlen($value);
+
+        for ($index = 0; $index < $length; $index++) {
+            $character = $value[$index];
+
+            if ($character === '(') {
+                $depth++;
+            } elseif ($character === ')') {
+                $depth--;
+
+                if ($depth < 0) {
+                    return false;
+                }
+
+                // The opening paren must only close at the very end for a single group.
+                if ($depth === 0 && $index !== $length - 1) {
+                    return false;
+                }
+            }
+        }
+
+        return $depth === 0;
     }
 }

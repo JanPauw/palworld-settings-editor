@@ -92,7 +92,7 @@ class PelicanServerStateService
         // Only a confirmed stopped/offline state is safe to edit. Deliberately does
         // NOT use ContainerStatus::isOffline(), which also returns true for "missing"
         // (daemon unreachable / node maintenance / unknown) — that must keep editing locked.
-        return in_array($this->statusValue($status), ['offline', 'exited', 'stopped', 'off'], true);
+        return in_array($this->statusValue($status), ['offline', 'exited'], true);
     }
 
     private function statusValue(mixed $status): ?string
