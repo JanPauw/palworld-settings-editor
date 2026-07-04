@@ -161,13 +161,27 @@ class PalworldOptionSettingsParser
         $buffer = '';
         $depth = 0;
         $inQuotes = false;
+        $escaped = false;
         $length = strlen($payload);
 
         for ($index = 0; $index < $length; $index++) {
             $character = $payload[$index];
-            $previous = $index > 0 ? $payload[$index - 1] : null;
 
-            if ($character === '"' && $previous !== '\\') {
+            // Honour the same C-style escaping serializeValue() emits: a backslash inside
+            // quotes escapes the next char, so an escaped \" or \\ never toggles the quote state.
+            if ($escaped) {
+                $buffer .= $character;
+                $escaped = false;
+                continue;
+            }
+
+            if ($character === '\\' && $inQuotes) {
+                $buffer .= $character;
+                $escaped = true;
+                continue;
+            }
+
+            if ($character === '"') {
                 $inQuotes = ! $inQuotes;
                 $buffer .= $character;
                 continue;
@@ -199,13 +213,23 @@ class PalworldOptionSettingsParser
     {
         $depth = 0;
         $inQuotes = false;
+        $escaped = false;
         $length = strlen($token);
 
         for ($index = 0; $index < $length; $index++) {
             $character = $token[$index];
-            $previous = $index > 0 ? $token[$index - 1] : null;
 
-            if ($character === '"' && $previous !== '\\') {
+            if ($escaped) {
+                $escaped = false;
+                continue;
+            }
+
+            if ($character === '\\' && $inQuotes) {
+                $escaped = true;
+                continue;
+            }
+
+            if ($character === '"') {
                 $inQuotes = ! $inQuotes;
                 continue;
             }
