@@ -18,14 +18,18 @@ out of their way and only touches what's safe to change.
 > [!WARNING]
 > Stop the server before editing. The editor only allows saving while the server
 > is confirmed offline/stopped, and a timestamped backup is written before every
-> save. Restart the server after saving to apply your changes.
+> save. Start the server after saving (there's a button on the page) to apply your
+> changes.
 
 ---
 
 ## Features
 
 - **Native panel integration** — adds a *Palworld Settings* page to the Pelican
-  server sidebar, styled to sit naturally alongside the built-in *Startup* page.
+  server sidebar using native Filament controls and the panel's own page layout,
+  so it sits naturally alongside the built-in *Startup* and *Settings* pages.
+- **Palworld-only** — the page only appears on Palworld servers, detected from the
+  server egg (tags, name, and startup command).
 - **Typed controls** — numbers, integers, toggles, text fields, and enums, each
   with sensible min/max/step bounds, labels, helper text, and tooltips.
 - **Grouped settings** — organized into readable sections:
@@ -35,10 +39,24 @@ out of their way and only touches what's safe to change.
   - Death and Difficulty
   - Base, Guild, and Limits
   - Advanced / present-only fields
-- **Safe-by-default saving** — writes are blocked unless the live daemon state
-  resolves to offline/stopped.
-- **Automatic backups** — a timestamped copy of the config is created before
-  every successful save.
+- **Live search** — filter the ~90 settings by name or key; matching sections
+  expand automatically and empty ones hide.
+- **Presets** — one click applies a themed set of values (Casual, Normal/Vanilla,
+  Hardcore, PvP, Fast Progression); only keys present in your file are touched, and
+  nothing is written until you Save.
+- **Save preview** — the Save button shows a confirmation listing every changed
+  value as *old → new* before writing.
+- **Start / restart from the page** — apply saved settings without switching tabs;
+  permission-gated (shown only if you can control the server's power state).
+- **Safe-by-default saving** — writes are blocked unless the server's power state
+  resolves to offline/stopped (via Pelican's native `retrieveStatus()`).
+- **Backups manager** — a timestamped copy of the config is created before every
+  save, and existing backups can be **restored** (the current file is backed up
+  first) or **deleted** right from the page.
+- **Reset to Palworld defaults** — refill the form with Palworld's default values
+  (from the game's `DefaultPalWorldSettings.ini` when available); nothing is written
+  until you press Save.
+- **Expand / collapse all** — quickly open or close every settings section.
 - **Non-destructive rewrites** — unknown `OptionSettings` keys are preserved when
   the file is written back.
 - **Respects egg-managed values** — startup-variable values (server name,
@@ -65,9 +83,12 @@ out of their way and only touches what's safe to change.
 ## Usage
 
 1. **Stop the server.** Saving is disabled while it's running.
-2. Open **Palworld Settings** and adjust the values you want.
-3. **Save.** A backup of the current `PalWorldSettings.ini` is created first.
-4. **Start the server** to apply the changes.
+2. Open **Palworld Settings** and adjust the values you want (use search or a preset
+   to move faster).
+3. **Save.** Review the change preview, then confirm — a backup of the current
+   `PalWorldSettings.ini` is created first.
+4. **Start the server** (there's a *Start server* button right on the page) to apply
+   the changes.
 
 > [!NOTE]
 > Startup-managed values (server name, passwords, RCON, public IP/port) are shown
@@ -76,7 +97,14 @@ out of their way and only touches what's safe to change.
 
 ## Configuration
 
-Plugin config lives in [`config/palworld-settings-editor.php`](config/palworld-settings-editor.php).
+Plugin config lives in [`config/palworld-settings-editor.php`](config/palworld-settings-editor.php)
+(auto-loaded by Pelican — no publish step needed):
+
+| Key | Default | Purpose |
+| --- | --- | --- |
+| `settings_path` | `Pal/Saved/Config/LinuxServer/PalWorldSettings.ini` | Server-relative path to the INI. The page auto-falls back to the `WindowsServer` path if this one is absent. |
+| `backup_suffix_format` | `Ymd-His` | PHP date format for the `.bak-…` backup suffix. |
+| `show_debug_section` | `false` | When `true`, shows the developer diagnostics section (raw `OptionSettings` line, unmapped keys, file preview, state diagnostics). |
 
 Developer diagnostics are hidden by default. To surface the debug section, set:
 
@@ -88,9 +116,12 @@ Developer diagnostics are hidden by default. To surface the debug section, set:
 
 **Does:**
 
-- Edit supported `OptionSettings` values from `PalWorldSettings.ini`.
+- Edit supported `OptionSettings` values from `PalWorldSettings.ini` with typed,
+  grouped, searchable controls and one-click presets.
 - Detect server power state and gate saving on a safe (offline) state.
-- Back up the config before each save and preserve unknown keys.
+- Preview changes before writing, back up the config before each save, and let you
+  restore or delete backups in-panel — preserving unknown keys throughout.
+- Reset the form to Palworld defaults and start/restart the server from the page.
 
 **Does not:**
 
@@ -98,10 +129,36 @@ Developer diagnostics are hidden by default. To surface the debug section, set:
 - Edit arbitrary host paths outside Pelican's server file abstractions.
 - Enable editing while the server is running, starting, stopping, suspended, or
   in an unconfirmed state.
-- Restore backups from the panel UI (backups are written, not yet restorable
-  in-app).
+
+## Compatibility with the Palworld egg
+
+This plugin is built for the official
+[games-steamcmd/palworld](https://github.com/pelican-eggs/games-steamcmd/tree/main/palworld)
+egg and its
+[PalworldServerConfigParser](https://github.com/pelican-eggs/Palworld-Config-Parser-Tool).
+
+The config parser runs on every boot but does an **in-place** update of only the INI
+keys whose startup variables are set (server name, passwords, RCON, max players, IP/port)
+and preserves everything else. This plugin edits a **disjoint** set of gameplay/world
+keys, so your edits are not overwritten on restart. The keys the egg manages are shown
+read-only here — change those from the **Startup** tab instead.
+
+> [!NOTE]
+> If you add your own egg variable for a gameplay setting this plugin also edits, the
+> parser will set that key from the variable on boot. With the stock egg there is no
+> overlap. On Proton/Windows servers the config lives under `WindowsServer/` — the plugin
+> falls back to that path automatically.
 
 ## Troubleshooting
+
+<details>
+<summary><strong>The Palworld Settings page doesn't appear</strong></summary>
+
+The page only shows on Palworld servers. It detects Palworld from the egg's tags,
+name, and startup command (which contains `PalServer` / `PalworldServerConfigParser`).
+If it's missing on a genuine Palworld server, the egg may be packaged unusually —
+confirm the server uses the Palworld egg.
+</details>
 
 <details>
 <summary><strong>Config file missing</strong></summary>
@@ -113,9 +170,18 @@ it and reload the plugin page.
 <details>
 <summary><strong>Save button is disabled</strong></summary>
 
-Saving is only enabled when the live daemon state resolves to offline/stopped. If
-the server is running — or the state can't be confirmed safely — saving stays
-disabled.
+Saving is only enabled when the server's power state resolves to offline/stopped
+(via Pelican's native status check). If the server is running — or the state can't
+be confirmed safely — saving stays disabled.
+</details>
+
+<details>
+<summary><strong>Start / Restart button is missing</strong></summary>
+
+The power actions are permission-gated: *Start* needs the `control.start` and
+*Restart* the `control.restart` subuser permission on the server (an owner/admin has
+both). *Start* shows while the server is stopped; *Restart* shows whenever the server
+isn't confirmed stopped (running, or when the daemon state can't be read).
 </details>
 
 <details>
@@ -137,8 +203,10 @@ file access.
 <details>
 <summary><strong>Using a Proton / Windows-style setup</strong></summary>
 
-The primary target is the Linux config path above. Proton/Windows Palworld setups
-may generate the config elsewhere and aren't the primary target of this version.
+The primary target is the Linux path (`.../LinuxServer/...`). On Proton/Windows
+servers Palworld generates the config under `.../WindowsServer/...`; the plugin
+detects the missing Linux file and falls back to the Windows path automatically. If
+your egg writes it somewhere else, point `settings_path` at it in the config file.
 </details>
 
 ## Project structure
@@ -146,12 +214,13 @@ may generate the config elsewhere and aren't the primary target of this version.
 | Path | Responsibility |
 | --- | --- |
 | `src/Filament/Server/Pages/PalworldSettingsPage.php` | The settings page: loads state, builds the form, validates and writes saves. |
-| `src/PalworldSettingsEditorPlugin.php` | Plugin registration and a small CSS hook for spacing polish. |
-| `src/Services/PalworldSettingsSchema.php` | Field definitions, labels, groups, bounds, and tooltips. |
+| `src/PalworldSettingsEditorPlugin.php` | Plugin registration and server-panel page discovery. |
+| `src/Services/PalworldSettingsSchema.php` | Field definitions, labels, groups, bounds, tooltips, default values, and presets. |
 | `src/Services/PalworldOptionSettingsParser.php` | Parses and rewrites the `OptionSettings=(...)` payload. |
-| `src/Services/PalworldSettingsFileService.php` | File read/write/backup through Pelican. |
-| `src/Services/PelicanServerStateService.php` | Server state detection and "safe to edit" logic. |
+| `src/Services/PalworldSettingsFileService.php` | File read/write/copy plus backup listing and deletion through Pelican's daemon file API. |
+| `src/Services/PelicanServerStateService.php` | Server state detection (native `retrieveStatus()`) and "safe to edit" logic. |
 | `src/Services/PelicanStartupVariableService.php` | Startup-variable lookup and read-only display. |
+| `src/Services/PalworldServerDetector.php` | Detects whether a server runs Palworld to scope page visibility. |
 
 ## Contributing
 

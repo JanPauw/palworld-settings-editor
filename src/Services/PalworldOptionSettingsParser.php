@@ -60,7 +60,14 @@ class PalworldOptionSettingsParser
             $entries
         )) . ')';
 
-        return preg_replace('/^\s*OptionSettings=.*$/m', $rebuiltLine, $contents, 1) ?? $contents;
+        // Use a callback so $ / \1 / ${x} sequences inside values are written literally
+        // instead of being interpreted as preg replacement back-references.
+        return preg_replace_callback(
+            '/^\s*OptionSettings=.*$/m',
+            static fn (array $matches): string => $rebuiltLine,
+            $contents,
+            1
+        ) ?? $contents;
     }
 
     public function parseOptionSettingsLine(string $line): array
@@ -154,13 +161,27 @@ class PalworldOptionSettingsParser
         $buffer = '';
         $depth = 0;
         $inQuotes = false;
+        $escaped = false;
         $length = strlen($payload);
 
         for ($index = 0; $index < $length; $index++) {
             $character = $payload[$index];
-            $previous = $index > 0 ? $payload[$index - 1] : null;
 
-            if ($character === '"' && $previous !== '\\') {
+            // Honour the same C-style escaping serializeValue() emits: a backslash inside
+            // quotes escapes the next char, so an escaped \" or \\ never toggles the quote state.
+            if ($escaped) {
+                $buffer .= $character;
+                $escaped = false;
+                continue;
+            }
+
+            if ($character === '\\' && $inQuotes) {
+                $buffer .= $character;
+                $escaped = true;
+                continue;
+            }
+
+            if ($character === '"') {
                 $inQuotes = ! $inQuotes;
                 $buffer .= $character;
                 continue;
@@ -192,13 +213,23 @@ class PalworldOptionSettingsParser
     {
         $depth = 0;
         $inQuotes = false;
+        $escaped = false;
         $length = strlen($token);
 
         for ($index = 0; $index < $length; $index++) {
             $character = $token[$index];
-            $previous = $index > 0 ? $token[$index - 1] : null;
 
-            if ($character === '"' && $previous !== '\\') {
+            if ($escaped) {
+                $escaped = false;
+                continue;
+            }
+
+            if ($character === '\\' && $inQuotes) {
+                $escaped = true;
+                continue;
+            }
+
+            if ($character === '"') {
                 $inQuotes = ! $inQuotes;
                 continue;
             }
@@ -252,37 +283,75 @@ class PalworldOptionSettingsParser
             return '""';
         }
 
-        if (is_int($value) || is_float($value)) {
-            return $this->formatNumericString((string) $value);
+        if (is_int($value)) {
+            return (string) $value;
+        }
+
+        if (is_float($value)) {
+            // Palworld writes float settings with 6 decimals; keep that format for parity.
+            return number_format($value, 6, '.', '');
         }
 
         $stringValue = (string) $value;
+
+        // Strip CR/LF so a value can never break out of its token and split the
+        // single-line OptionSettings=(...) payload or inject extra INI lines.
+        $stringValue = str_replace(["\r", "\n"], '', $stringValue);
 
         if ($stringValue === '') {
             return '""';
         }
 
-        if (is_numeric($stringValue)) {
-            return $this->formatNumericString($stringValue);
-        }
+        // Numeric values arrive as real int/float (handled above); a numeric-looking string
+        // here is a genuine string-field value (e.g. RandomizerSeed) and must be quoted as-is
+        // rather than reformatted to 6 decimals.
 
         if (in_array($stringValue, ['None', 'Normal', 'Hard', 'Item', 'ItemAndEquipment', 'All', 'Region', 'Text'], true)) {
             return $stringValue;
         }
 
-        if (str_starts_with($stringValue, '(') && str_ends_with($stringValue, ')')) {
+        // Pass through a single fully-balanced tuple like (Steam,Xbox) verbatim, but NOT
+        // arbitrary text that merely starts/ends with parens (e.g. "()x=1,Evil=(y)"), which
+        // would inject extra top-level keys into the OptionSettings payload.
+        if ($this->isSingleBalancedGroup($stringValue)) {
             return $stringValue;
         }
 
         return '"' . addcslashes($stringValue, "\\\"") . '"';
     }
 
-    private function formatNumericString(string $value): string
+    /**
+     * True only if the whole string is one balanced parenthesised group, e.g. "(Steam,Xbox)".
+     * "()x=1" or "(a)(b)" return false so they get quoted rather than passed through raw.
+     */
+    private function isSingleBalancedGroup(string $value): bool
     {
-        if (! str_contains($value, '.')) {
-            return $value;
+        if (! str_starts_with($value, '(') || ! str_ends_with($value, ')')) {
+            return false;
         }
 
-        return number_format((float) $value, 6, '.', '');
+        $depth = 0;
+        $length = strlen($value);
+
+        for ($index = 0; $index < $length; $index++) {
+            $character = $value[$index];
+
+            if ($character === '(') {
+                $depth++;
+            } elseif ($character === ')') {
+                $depth--;
+
+                if ($depth < 0) {
+                    return false;
+                }
+
+                // The opening paren must only close at the very end for a single group.
+                if ($depth === 0 && $index !== $length - 1) {
+                    return false;
+                }
+            }
+        }
+
+        return $depth === 0;
     }
 }

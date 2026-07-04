@@ -2,54 +2,54 @@
 
 namespace JanPauw\PalworldSettingsEditor\Services;
 
-use Illuminate\Support\Facades\Http;
+use Throwable;
 
+/**
+ * Resolves the live power state of a Pelican server and decides whether it is
+ * safe to edit the Palworld settings file.
+ *
+ * This relies on Pelican core's native Server::retrieveStatus() (a ContainerStatus
+ * enum) and treats only a confirmed offline/stopped state as safe to edit, rather
+ * than probing the daemon HTTP API directly.
+ */
 class PelicanServerStateService
 {
-    /** @var array<string, array{payload: array<string, mixed>|null, endpoint: ?string, error: ?string}> */
-    private array $daemonStateCache = [];
-
-    private const SAFE_STATES = [
-        'offline',
-        'stopped',
-        'stop',
-        'off',
-    ];
-
-    private const UNSAFE_STATES = [
-        'running',
-        'starting',
-        'stopping',
-        'installing',
-        'suspended',
-        'unknown',
-    ];
+    /** @var array<int|string, mixed> */
+    private array $statusCache = [];
 
     public function isSafeToEdit(mixed $server): bool
     {
-        return in_array($this->getNormalizedState($server), self::SAFE_STATES, true);
+        $status = $this->resolveStatus($server);
+
+        return $status !== null && $this->statusIsOffline($status);
     }
 
     public function getStateLabel(mixed $server): string
     {
-        $state = $this->getNormalizedState($server);
+        $value = $this->statusValue($this->resolveStatus($server));
 
-        return $state === 'unknown' ? 'Unknown' : ucfirst($state);
+        return $value === null ? 'Unknown' : ucfirst($value);
     }
 
     public function getStatusMessage(mixed $server): string
     {
+        $status = $this->resolveStatus($server);
+
+        if ($status === null) {
+            return 'Editing is disabled because the current server state could not be confirmed. Check the node/daemon connection and reload the page.';
+        }
+
         if ($this->isSafeToEdit($server)) {
-            return 'This server appears to be stopped/offline, so settings can be edited safely.';
+            return 'This server is stopped, so Palworld settings can be edited safely. Restart the server after saving for changes to take effect.';
         }
 
-        $state = $this->getNormalizedState($server);
+        $value = $this->statusValue($status);
 
-        if (in_array($state, self::UNSAFE_STATES, true)) {
-            return 'Editing is disabled because the server is not stopped. Stop the server before changing Palworld settings, otherwise Palworld or the egg may overwrite changes.';
+        if ($value === null || $value === 'missing') {
+            return 'Editing is disabled because the current server state could not be confirmed. Check the node/daemon connection and reload the page.';
         }
 
-        return 'Editing is disabled because the current server state could not be confirmed.';
+        return 'Editing is disabled because the server is not stopped. Stop the server first, otherwise Palworld or the egg may overwrite your changes on start.';
     }
 
     /**
@@ -57,141 +57,63 @@ class PelicanServerStateService
      */
     public function getStateDiagnostics(mixed $server): array
     {
-        $daemonState = $this->getDaemonStateProbe($server);
+        $status = $this->resolveStatus($server);
 
         return [
-            'status' => data_get($server, 'status'),
-            'state' => data_get($server, 'state'),
-            'power_state' => data_get($server, 'power_state'),
-            'powerState' => data_get($server, 'powerState'),
-            'current_state' => data_get($server, 'current_state'),
-            'currentState' => data_get($server, 'currentState'),
-            'server_state' => data_get($server, 'server_state'),
-            'serverState' => data_get($server, 'serverState'),
-            'attributes.status' => data_get($server, 'attributes.status'),
-            'attributes.state' => data_get($server, 'attributes.state'),
-            'attributes.current_state' => data_get($server, 'attributes.current_state'),
-            'attributes.currentState' => data_get($server, 'attributes.currentState'),
-            'attributes.server_state' => data_get($server, 'attributes.server_state'),
-            'attributes.serverState' => data_get($server, 'attributes.serverState'),
-            'suspended' => data_get($server, 'suspended'),
-            'attributes.suspended' => data_get($server, 'attributes.suspended'),
+            'status' => $this->statusValue($status),
+            'is_offline' => $status !== null && $this->statusIsOffline($status),
+            'server.id' => data_get($server, 'id'),
             'server.uuid' => data_get($server, 'uuid'),
-            'server.node.id' => data_get($server, 'node.id') ?? data_get($server, 'node_id'),
-            'daemon.endpoint' => $daemonState['endpoint'],
-            'daemon.error' => $daemonState['error'],
-            'daemon.current_state' => data_get($daemonState['payload'], 'current_state'),
-            'daemon.state' => data_get($daemonState['payload'], 'state'),
-            'daemon.status' => data_get($daemonState['payload'], 'status'),
-            'daemon.attributes.current_state' => data_get($daemonState['payload'], 'attributes.current_state'),
-            'daemon.attributes.state' => data_get($daemonState['payload'], 'attributes.state'),
-            'daemon.attributes.status' => data_get($daemonState['payload'], 'attributes.status'),
-            'daemon.meta.state' => data_get($daemonState['payload'], 'meta.state'),
-            'daemon.data.attributes.current_state' => data_get($daemonState['payload'], 'data.attributes.current_state'),
-            'daemon.data.attributes.state' => data_get($daemonState['payload'], 'data.attributes.state'),
-            'daemon.data.attributes.status' => data_get($daemonState['payload'], 'data.attributes.status'),
+            'server.node' => data_get($server, 'node.name') ?? data_get($server, 'node_id'),
         ];
     }
 
-    private function getNormalizedState(mixed $server): string
+    private function resolveStatus(mixed $server): mixed
     {
-        $daemonState = $this->getDaemonStateProbe($server);
+        $key = data_get($server, 'id') ?? data_get($server, 'uuid') ?? spl_object_id((object) $server);
 
-        $candidates = [
-            data_get($server, 'status'),
-            data_get($server, 'state'),
-            data_get($server, 'power_state'),
-            data_get($server, 'powerState'),
-            data_get($server, 'current_state'),
-            data_get($server, 'currentState'),
-            data_get($server, 'attributes.status'),
-            data_get($server, 'attributes.state'),
-            data_get($server, 'attributes.current_state'),
-            data_get($server, 'attributes.currentState'),
-            data_get($server, 'server_state'),
-            data_get($server, 'serverState'),
-            data_get($server, 'attributes.server_state'),
-            data_get($server, 'attributes.serverState'),
-            data_get($server, 'status.value'),
-            data_get($server, 'attributes.status.value'),
-            data_get($daemonState['payload'], 'current_state'),
-            data_get($daemonState['payload'], 'state'),
-            data_get($daemonState['payload'], 'status'),
-            data_get($daemonState['payload'], 'attributes.current_state'),
-            data_get($daemonState['payload'], 'attributes.state'),
-            data_get($daemonState['payload'], 'attributes.status'),
-            data_get($daemonState['payload'], 'meta.state'),
-            data_get($daemonState['payload'], 'data.attributes.current_state'),
-            data_get($daemonState['payload'], 'data.attributes.state'),
-            data_get($daemonState['payload'], 'data.attributes.status'),
-        ];
-
-        foreach ($candidates as $candidate) {
-            if (!is_string($candidate) || $candidate === '') {
-                continue;
-            }
-
-            $normalized = strtolower(trim($candidate));
-            if ($normalized !== '') {
-                return $normalized;
-            }
+        if (array_key_exists($key, $this->statusCache)) {
+            return $this->statusCache[$key];
         }
 
-        if ((bool) data_get($server, 'suspended', false) || (bool) data_get($server, 'attributes.suspended', false)) {
-            return 'suspended';
+        try {
+            if (is_object($server) && method_exists($server, 'retrieveStatus')) {
+                return $this->statusCache[$key] = $server->retrieveStatus();
+            }
+        } catch (Throwable) {
+            // Daemon unreachable or status could not be resolved; treat as unknown.
         }
 
-        return 'unknown';
+        return $this->statusCache[$key] = null;
     }
 
-    /**
-     * @return array{payload: array<string, mixed>|null, endpoint: ?string, error: ?string}
-     */
-    private function getDaemonStateProbe(mixed $server): array
+    private function statusIsOffline(mixed $status): bool
     {
-        $uuid = data_get($server, 'uuid');
-        $node = data_get($server, 'node');
+        // Only a confirmed stopped/offline state is safe to edit. Deliberately does
+        // NOT use ContainerStatus::isOffline(), which also returns true for "missing"
+        // (daemon unreachable / node maintenance / unknown) — that must keep editing locked.
+        return in_array($this->statusValue($status), ['offline', 'exited'], true);
+    }
 
-        if (! is_string($uuid) || $uuid === '' || $node === null) {
-            return [
-                'payload' => null,
-                'endpoint' => null,
-                'error' => 'Missing server uuid or node relation.',
-            ];
+    private function statusValue(mixed $status): ?string
+    {
+        if ($status === null) {
+            return null;
         }
 
-        if (array_key_exists($uuid, $this->daemonStateCache)) {
-            return $this->daemonStateCache[$uuid];
+        if (is_string($status)) {
+            return strtolower(trim($status)) ?: null;
         }
 
-        $endpoints = [
-            "/api/servers/{$uuid}/resources",
-            "/api/servers/{$uuid}",
-        ];
-
-        $lastError = null;
-
-        foreach ($endpoints as $endpoint) {
-            try {
-                $response = Http::daemon($node)
-                    ->get($endpoint)
-                    ->throw()
-                    ->json();
-
-                return $this->daemonStateCache[$uuid] = [
-                    'payload' => is_array($response) ? $response : null,
-                    'endpoint' => $endpoint,
-                    'error' => null,
-                ];
-            } catch (\Throwable $throwable) {
-                $lastError = $throwable->getMessage();
-            }
+        $value = data_get($status, 'value');
+        if (is_string($value) && $value !== '') {
+            return strtolower($value);
         }
 
-        return $this->daemonStateCache[$uuid] = [
-            'payload' => null,
-            'endpoint' => end($endpoints) ?: null,
-            'error' => $lastError,
-        ];
+        if (is_object($status) && property_exists($status, 'name') && is_string($status->name)) {
+            return strtolower($status->name);
+        }
+
+        return null;
     }
 }

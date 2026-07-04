@@ -4,8 +4,6 @@ namespace JanPauw\PalworldSettingsEditor;
 
 use Filament\Contracts\Plugin;
 use Filament\Panel;
-use Filament\View\PanelsRenderHook;
-use Illuminate\Support\Facades\Blade;
 
 class PalworldSettingsEditorPlugin implements Plugin
 {
@@ -26,27 +24,20 @@ class PalworldSettingsEditorPlugin implements Plugin
 
     public function boot(Panel $panel): void
     {
-        $panel->renderHook(
-            PanelsRenderHook::STYLES_BEFORE,
-            fn () => Blade::render(<<<'BLADE'
-                <style>
-                    .palworld-settings-grid-section [data-slot="section-content"] {
-                        gap: 1rem;
-                    }
+        // Merge the plugin config so operator overrides in config/palworld-settings-editor.php
+        // are honoured (values already set — e.g. from env — take precedence). The plugin also
+        // ships inline defaults at each read site, so it works even if this file is absent.
+        $configPath = plugin_path($this->getId(), 'config/palworld-settings-editor.php');
 
-                    .palworld-setting-card {
-                        border-radius: 0.75rem;
-                    }
+        if (is_file($configPath)) {
+            $fileConfig = require $configPath;
 
-                    .palworld-setting-card > [data-slot="section-content-ctn"] {
-                        padding: 1rem;
-                    }
-
-                    .palworld-setting-card [data-slot="section-content"] {
-                        gap: 0.5rem;
-                    }
-                </style>
-            BLADE)
-        );
+            if (is_array($fileConfig)) {
+                config()->set('palworld-settings-editor', array_merge(
+                    $fileConfig,
+                    (array) config('palworld-settings-editor', [])
+                ));
+            }
+        }
     }
 }

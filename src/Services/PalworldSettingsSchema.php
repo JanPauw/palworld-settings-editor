@@ -18,7 +18,7 @@ class PalworldSettingsSchema
                     'CollectionObjectHpRate' => ['label' => 'Collection Object HP Rate', 'type' => 'number', 'min' => 0, 'max' => 20, 'step' => 0.1],
                     'CollectionObjectRespawnSpeedRate' => ['label' => 'Collection Respawn Speed Rate', 'type' => 'number', 'min' => 0, 'max' => 20, 'step' => 0.1],
                     'EnemyDropItemRate' => ['label' => 'Enemy Drop Item Rate', 'type' => 'number', 'min' => 0, 'max' => 20, 'step' => 0.1],
-                    'SupplyDropSpan' => ['label' => 'Supply Drop Span', 'type' => 'number', 'min' => 0, 'max' => 100000, 'step' => 1],
+                    'SupplyDropSpan' => ['label' => 'Supply Drop Span', 'type' => 'integer', 'min' => 0, 'max' => 100000],
                     'WorkSpeedRate' => ['label' => 'Work Speed Rate', 'type' => 'number', 'min' => 0, 'max' => 20, 'step' => 0.1],
                 ],
             ],
@@ -55,6 +55,7 @@ class PalworldSettingsSchema
                     'bExistPlayerAfterLogout' => ['label' => 'Player Persists After Logout', 'type' => 'boolean'],
                     'bEnableDefenseOtherGuildPlayer' => ['label' => 'Enable Defense for Other Guild Players', 'type' => 'boolean'],
                     'bIsShowJoinLeftMessage' => ['label' => 'Show Join/Leave Messages', 'type' => 'boolean'],
+                    'bEnableInvaderEnemy' => ['label' => 'Enable Invader Enemy (Raids)', 'type' => 'boolean'],
                     'bUseAuth' => ['label' => 'Use Authentication', 'type' => 'boolean'],
                     'bIsUseBackupSaveData' => ['label' => 'Use Backup Save Data', 'type' => 'boolean'],
                     'AutoSaveSpan' => ['label' => 'Auto Save Span', 'type' => 'number', 'min' => 0, 'max' => 100000, 'step' => 0.1],
@@ -138,6 +139,16 @@ class PalworldSettingsSchema
         ];
     }
 
+    /**
+     * INI keys the Palworld egg rewrites from startup variables on every boot
+     * (via PalworldServerConfigParser). These are shown read-only and excluded
+     * from editing so the plugin never fights the egg over them.
+     *
+     * Matches the keys the stock games-steamcmd/palworld egg actually manages:
+     * ServerName/ServerDescription/ServerPassword/AdminPassword from their vars,
+     * ServerPlayerMaxNum from MAX_PLAYERS, RCON from RCON_ENABLE/RCON_PORT, and
+     * PublicIP/PublicPort from the built-in SERVER_IP/SERVER_PORT allocation vars.
+     */
     public function getEggManagedIniKeys(): array
     {
         return [
@@ -150,10 +161,13 @@ class PalworldSettingsSchema
             'RCONPort',
             'PublicIP',
             'PublicPort',
-            'bEnableInvaderEnemy',
         ];
     }
 
+    /**
+     * Startup variable names to surface read-only, aligned with the stock
+     * games-steamcmd/palworld egg's declared variables.
+     */
     public function getStartupVariableNames(): array
     {
         return [
@@ -165,9 +179,8 @@ class PalworldSettingsSchema
             'RCON_ENABLE',
             'RCON_PORT',
             'PUBLIC_IP',
-            'SERVER_PORT',
+            'ALLOW_CONNECT_PLATFORM',
             'AUTO_UPDATE',
-            'ENABLE_ENEMY',
         ];
     }
 
@@ -285,5 +298,217 @@ class PalworldSettingsSchema
     public function getFieldTooltip(string $fieldKey): string
     {
         return $fieldKey;
+    }
+
+    /**
+     * Best-effort Palworld default values, sourced from the official
+     * PalworldServerConfigParser reference defaults. Used by "Reset to defaults"
+     * when the game's shipped DefaultPalWorldSettings.ini cannot be read.
+     *
+     * @return array<string, mixed>
+     */
+    public function getDefaultValues(): array
+    {
+        return [
+            // Gameplay rates
+            'ExpRate' => 1.0, 'PalCaptureRate' => 1.0, 'PalSpawnNumRate' => 1.0,
+            'PalEggDefaultHatchingTime' => 72.0, 'CollectionDropRate' => 1.0,
+            'CollectionObjectHpRate' => 1.0, 'CollectionObjectRespawnSpeedRate' => 1.0,
+            'EnemyDropItemRate' => 1.0, 'SupplyDropSpan' => 180, 'WorkSpeedRate' => 1.0,
+            // Damage, stamina, hunger, HP
+            'PlayerDamageRateAttack' => 1.0, 'PlayerDamageRateDefense' => 1.0,
+            'PlayerStomachDecreaceRate' => 1.0, 'PlayerStaminaDecreaceRate' => 1.0,
+            'PlayerAutoHPRegeneRate' => 1.0, 'PlayerAutoHpRegeneRateInSleep' => 1.0,
+            'PalDamageRateAttack' => 1.0, 'PalDamageRateDefense' => 1.0,
+            'PalStomachDecreaceRate' => 1.0, 'PalStaminaDecreaceRate' => 1.0,
+            'PalAutoHPRegeneRate' => 1.0, 'PalAutoHpRegeneRateInSleep' => 1.0,
+            'ItemWeightRate' => 1.0, 'EquipmentDurabilityDamageRate' => 1.0,
+            // Time and world behaviour
+            'DayTimeSpeedRate' => 1.0, 'NightTimeSpeedRate' => 1.0,
+            'BuildObjectHpRate' => 1.0, 'BuildObjectDamageRate' => 1.0,
+            'BuildObjectDeteriorationDamageRate' => 1.0,
+            'bEnableFastTravel' => true, 'bEnableFastTravelOnlyBaseCamp' => false,
+            'bIsStartLocationSelectByMap' => true, 'bExistPlayerAfterLogout' => false,
+            'bEnableDefenseOtherGuildPlayer' => false, 'bIsShowJoinLeftMessage' => true,
+            'bEnableInvaderEnemy' => true, 'bUseAuth' => true, 'bIsUseBackupSaveData' => true,
+            'AutoSaveSpan' => 30, 'BanListURL' => 'https://api.palworldgame.com/api/banlist.txt',
+            'LogFormatType' => 'Text', 'CrossplayPlatforms' => '(Steam,Xbox,PS5,Mac)',
+            // Death and difficulty
+            'Difficulty' => 'None', 'DeathPenalty' => 'All', 'RandomizerType' => 'None',
+            'RandomizerSeed' => '', 'bIsRandomizerPalLevelRandom' => false,
+            'bHardcore' => false, 'bPalLost' => false, 'bEnablePlayerToPlayerDamage' => false,
+            'bEnableFriendlyFire' => false, 'bEnableNonLoginPenalty' => true,
+            'bCanPickupOtherGuildDeathPenaltyDrop' => false,
+            'RespawnPenaltyDurationThreshold' => 0.0, 'RespawnPenaltyTimeScale' => 0.0,
+            // Base, guild, and limits
+            'BaseCampMaxNum' => 128, 'BaseCampWorkerMaxNum' => 15, 'BaseCampMaxNumInGuild' => 3,
+            'GuildPlayerMaxNum' => 20, 'DropItemMaxNum' => 3000, 'DropItemMaxNum_UNKO' => 100,
+            'DropItemAliveMaxHours' => 1.0, 'CoopPlayerMaxNum' => 4,
+            'AutoResetGuildTimeNoOnlinePlayers' => 72.0, 'bAutoResetGuildNoOnlinePlayers' => false,
+            'MaxBuildingLimitNum' => 0,
+            // Advanced / present-only
+            'bActiveUNKO' => false, 'bEnableAimAssistPad' => true, 'bEnableAimAssistKeyboard' => false,
+            'bIsMultiplay' => false, 'bIsPvP' => false, 'bCharacterRecreateInHardcore' => false,
+            'Region' => '', 'ChatPostLimitPerMinute' => 10, 'RESTAPIEnabled' => false,
+            'RESTAPIPort' => 8212, 'bShowPlayerList' => false, 'EnablePredatorBossPal' => true,
+            'ServerReplicatePawnCullDistance' => 15000.0, 'bAllowGlobalPalboxExport' => true,
+            'bAllowGlobalPalboxImport' => false, 'ItemContainerForceMarkDirtyInterval' => 1.0,
+            'ItemCorruptionMultiplier' => 1.0, 'bBuildAreaLimit' => false,
+            'bInvisibleOtherGuildBaseCampAreaFX' => false,
+            'bAllowClientMod' => true,
+            'BlockRespawnTime' => 5.0,
+            'GuildRejoinCooldownMinutes' => 0,
+            'DenyTechnologyList' => '',
+            'bDisplayPvPItemNumOnWorldMap_BaseCamp' => false,
+            'bDisplayPvPItemNumOnWorldMap_Player' => false,
+            'AdditionalDropItemWhenPlayerKillingInPvPMode' => 'PlayerDropItem',
+            'AdditionalDropItemNumWhenPlayerKillingInPvPMode' => 1,
+            'bAdditionalDropItemWhenPlayerKillingInPvPMode' => false,
+            'bAllowEnhanceStat_Health' => true,
+            'bAllowEnhanceStat_Attack' => true,
+            'bAllowEnhanceStat_Stamina' => true,
+            'bAllowEnhanceStat_Weight' => true,
+            'bAllowEnhanceStat_WorkSpeed' => true,
+        ];
+    }
+
+    /**
+     * Resolve a field's default value, falling back to a sensible type-based
+     * default when the field is not in the reference defaults map.
+     */
+    public function getDefaultValue(string $fieldKey, mixed $fallback = null): mixed
+    {
+        $defaults = $this->getDefaultValues();
+
+        if (array_key_exists($fieldKey, $defaults)) {
+            return $defaults[$fieldKey];
+        }
+
+        $definition = $this->getFieldDefinition($fieldKey);
+
+        return match ($definition['type'] ?? 'string') {
+            'boolean' => false,
+            'number' => 1.0,
+            'integer' => 0,
+            'enum' => $definition['options'][0] ?? ($fallback ?? ''),
+            default => '',
+        };
+    }
+
+    /**
+     * Themed presets. Every key must exist in getEditableGroups(); the page skips
+     * any key not present in the current file. 'normal' carries no values — the page
+     * derives it from getDefaultValue() so it always tracks the defaults.
+     *
+     * @return array<string, array{label: string, values: array<string, mixed>}>
+     */
+    public function getPresets(): array
+    {
+        return [
+            'normal' => ['label' => 'Normal / Vanilla', 'values' => []],
+            'casual' => ['label' => 'Casual', 'values' => $this->casualPresetValues()],
+            'hardcore' => ['label' => 'Hardcore', 'values' => $this->hardcorePresetValues()],
+            'pvp' => ['label' => 'PvP', 'values' => $this->pvpPresetValues()],
+            'fast_progression' => ['label' => 'Fast Progression', 'values' => $this->fastProgressionPresetValues()],
+        ];
+    }
+
+    /** @return array<string, mixed> */
+    private function casualPresetValues(): array
+    {
+        return [
+            'ExpRate' => 2.0,
+            'PalCaptureRate' => 2.0,
+            'PalEggDefaultHatchingTime' => 2.0,
+            'CollectionDropRate' => 2.0,
+            'EnemyDropItemRate' => 2.0,
+            'WorkSpeedRate' => 2.0,
+            'PlayerStomachDecreaceRate' => 0.5,
+            'PlayerStaminaDecreaceRate' => 0.5,
+            'PlayerAutoHPRegeneRate' => 2.0,
+            'PlayerAutoHpRegeneRateInSleep' => 2.0,
+            'PalStomachDecreaceRate' => 0.5,
+            'PalStaminaDecreaceRate' => 0.5,
+            'PalAutoHPRegeneRate' => 2.0,
+            'ItemWeightRate' => 0.5,
+            'EquipmentDurabilityDamageRate' => 0.5,
+            'Difficulty' => 'None',
+            'DeathPenalty' => 'None',
+            'bHardcore' => false,
+            'bPalLost' => false,
+            'bEnableNonLoginPenalty' => false,
+            'bEnablePlayerToPlayerDamage' => false,
+            'bEnableFriendlyFire' => false,
+            'bEnableInvaderEnemy' => false,
+            'bEnableFastTravel' => true,
+            'bIsPvP' => false,
+        ];
+    }
+
+    /** @return array<string, mixed> */
+    private function hardcorePresetValues(): array
+    {
+        return [
+            'ExpRate' => 0.5,
+            'PalCaptureRate' => 0.5,
+            'CollectionDropRate' => 0.75,
+            'EnemyDropItemRate' => 0.75,
+            'WorkSpeedRate' => 0.75,
+            'PlayerDamageRateDefense' => 1.5,
+            'PlayerStomachDecreaceRate' => 1.5,
+            'PlayerStaminaDecreaceRate' => 1.5,
+            'PlayerAutoHPRegeneRate' => 0.5,
+            'PlayerAutoHpRegeneRateInSleep' => 0.5,
+            'PalStomachDecreaceRate' => 1.5,
+            'PalStaminaDecreaceRate' => 1.5,
+            'ItemWeightRate' => 1.5,
+            'EquipmentDurabilityDamageRate' => 1.5,
+            'Difficulty' => 'Hard',
+            'DeathPenalty' => 'All',
+            'bHardcore' => true,
+            'bCharacterRecreateInHardcore' => true,
+            'bPalLost' => true,
+            'bEnableNonLoginPenalty' => true,
+            'bEnableInvaderEnemy' => true,
+        ];
+    }
+
+    /** @return array<string, mixed> */
+    private function pvpPresetValues(): array
+    {
+        return [
+            'bIsMultiplay' => true,
+            'bIsPvP' => true,
+            'bEnablePlayerToPlayerDamage' => true,
+            'bEnableFriendlyFire' => true,
+            'bEnableDefenseOtherGuildPlayer' => true,
+            'bCanPickupOtherGuildDeathPenaltyDrop' => true,
+            'DeathPenalty' => 'Item',
+            'bAdditionalDropItemWhenPlayerKillingInPvPMode' => true,
+            'AdditionalDropItemNumWhenPlayerKillingInPvPMode' => 1,
+            'bDisplayPvPItemNumOnWorldMap_BaseCamp' => true,
+            'bDisplayPvPItemNumOnWorldMap_Player' => true,
+            'bEnableInvaderEnemy' => true,
+        ];
+    }
+
+    /** @return array<string, mixed> */
+    private function fastProgressionPresetValues(): array
+    {
+        return [
+            'ExpRate' => 5.0,
+            'PalCaptureRate' => 4.0,
+            'PalSpawnNumRate' => 2.0,
+            'PalEggDefaultHatchingTime' => 1.0,
+            'CollectionDropRate' => 4.0,
+            'CollectionObjectRespawnSpeedRate' => 3.0,
+            'EnemyDropItemRate' => 3.0,
+            'WorkSpeedRate' => 4.0,
+            'ItemWeightRate' => 0.5,
+            'PlayerStaminaDecreaceRate' => 0.5,
+            'PlayerStomachDecreaceRate' => 0.5,
+            'DeathPenalty' => 'None',
+            'bEnableFastTravel' => true,
+        ];
     }
 }
