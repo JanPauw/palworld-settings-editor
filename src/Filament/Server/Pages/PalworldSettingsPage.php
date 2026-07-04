@@ -22,6 +22,7 @@ use JanPauw\PalworldSettingsEditor\Services\PalworldSettingsSchema;
 use JanPauw\PalworldSettingsEditor\Services\PelicanServerStateService;
 use JanPauw\PalworldSettingsEditor\Services\PelicanStartupVariableService;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Support\HtmlString;
 use Throwable;
 
 class PalworldSettingsPage extends Page
@@ -336,6 +337,11 @@ class PalworldSettingsPage extends Page
                 ->color('primary')
                 ->disabled(fn (): bool => ! $this->canSave())
                 ->keyBindings(['mod+s'])
+                ->requiresConfirmation()
+                ->modalHeading('Review changes before saving')
+                ->modalDescription('These settings will be written to PalWorldSettings.ini. A timestamped backup is created first.')
+                ->modalSubmitActionLabel('Save changes')
+                ->modalContent(fn (): HtmlString => new HtmlString($this->renderSaveDiff()))
                 ->action('save'),
         ];
     }
@@ -371,6 +377,56 @@ class PalworldSettingsPage extends Page
         }
 
         return false;
+    }
+
+    /**
+     * Escaped HTML change list for the Save confirmation modal: each editable key
+     * that differs from the current file value, shown as "Label: old -> new".
+     */
+    public function renderSaveDiff(): string
+    {
+        $schema = $this->settingsSchema();
+        $rows = [];
+
+        foreach ($this->getEditableFieldKeys() as $key) {
+            $old = $this->parsedSettings[$key] ?? null;
+            $new = $this->formData[$key] ?? null;
+
+            if ($old === $new) {
+                continue;
+            }
+
+            $label = $schema->getFieldDefinition($key)['label'] ?? $key;
+
+            $rows[] = sprintf(
+                '<li><span class="font-medium">%s</span>: '
+                . '<span class="line-through opacity-70">%s</span> '
+                . '<span aria-hidden="true">&rarr;</span> '
+                . '<span class="font-semibold">%s</span></li>',
+                e($label),
+                e($this->formatDiffValue($old)),
+                e($this->formatDiffValue($new)),
+            );
+        }
+
+        if ($rows === []) {
+            return '<p class="text-sm text-gray-500 dark:text-gray-400">No changes to save.</p>';
+        }
+
+        return '<ul class="list-disc space-y-1 ps-5 text-sm">' . implode('', $rows) . '</ul>';
+    }
+
+    private function formatDiffValue(mixed $value): string
+    {
+        if ($value === null || $value === '') {
+            return '(unset)';
+        }
+
+        if (is_bool($value)) {
+            return $value ? 'True' : 'False';
+        }
+
+        return (string) $value;
     }
 
     public function save(): void
