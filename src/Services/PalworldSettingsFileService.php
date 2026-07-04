@@ -4,6 +4,7 @@ namespace JanPauw\PalworldSettingsEditor\Services;
 
 use App\Repositories\Daemon\DaemonFileRepository;
 use Exception;
+use Throwable;
 
 class PalworldSettingsFileService
 {
@@ -57,7 +58,13 @@ class PalworldSettingsFileService
 
         try {
             $entries = $this->fileRepository->setServer($server)->getDirectory($directory === '' ? '/' : $directory);
-        } catch (Exception) {
+        } catch (Throwable) {
+            // Daemon unreachable or a non-array/empty response (getDirectory is typed array
+            // but an empty JSON body can trip a TypeError) — degrade to no backups.
+            return [];
+        }
+
+        if (! is_iterable($entries)) {
             return [];
         }
 

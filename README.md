@@ -180,7 +180,8 @@ be confirmed safely — saving stays disabled.
 
 The power actions are permission-gated: *Start* needs the `control.start` and
 *Restart* the `control.restart` subuser permission on the server (an owner/admin has
-both). *Start* only shows while the server is stopped; *Restart* only while it's running.
+both). *Start* shows while the server is stopped; *Restart* shows whenever the server
+isn't confirmed stopped (running, or when the daemon state can't be read).
 </details>
 
 <details>

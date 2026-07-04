@@ -150,16 +150,6 @@ class PalworldSettingsPage extends Page
         return 'Palworld';
     }
 
-    public static function getModelLabel(): string
-    {
-        return static::getNavigationLabel();
-    }
-
-    public static function getPluralModelLabel(): string
-    {
-        return static::getNavigationLabel();
-    }
-
     public function getTitle(): string
     {
         return static::getNavigationLabel();
@@ -197,11 +187,12 @@ class PalworldSettingsPage extends Page
 
             if ($this->settingsFileExists) {
                 $contents = $settingsFileService->read($server, $this->settingsPath);
-                $this->optionSettingsLine = $settingsFileService->getOptionSettingsLine($contents);
-                $this->settingsFilePreview = substr($contents, 0, 1500);
+                $rawLine = $settingsFileService->getOptionSettingsLine($contents);
+                $this->optionSettingsLine = $rawLine === null ? null : $this->redactSecrets($rawLine);
+                $this->settingsFilePreview = $this->redactSecrets(substr($contents, 0, 1500));
 
-                if ($this->optionSettingsLine !== null) {
-                    $this->parsedSettings = $settingsParser->parseOptionSettingsLine($this->optionSettingsLine);
+                if ($rawLine !== null) {
+                    $this->parsedSettings = $this->redactSensitiveSettings($settingsParser->parseOptionSettingsLine($rawLine));
                     $this->groupedSettings = $this->buildGroupedSettings($settingsSchema, $this->parsedSettings);
                     $this->unknownSettings = $this->buildUnknownSettings($settingsSchema, $this->parsedSettings);
                     $this->detectedEggManagedIniKeys = $settingsSchema->getDetectedEggManagedKeys($this->parsedSettings);
@@ -613,21 +604,22 @@ class PalworldSettingsPage extends Page
             $this->validateFormData();
 
             $contents = $settingsFileService->read($server, $this->settingsPath);
-            $backupPath = $this->settingsPath . '.bak-' . now()->format((string) config('palworld-settings-editor.backup_suffix_format', 'Ymd-His'));
+            $backupPath = $this->newBackupPath();
 
             $settingsFileService->copy($server, $this->settingsPath, $backupPath);
 
             $updatedContents = $settingsParser->write($contents, $changes);
             $settingsFileService->write($server, $this->settingsPath, $updatedContents);
 
-            $this->optionSettingsLine = $settingsFileService->getOptionSettingsLine($updatedContents);
-            $this->parsedSettings = $settingsParser->parse($updatedContents);
+            $rawOptionSettingsLine = $settingsFileService->getOptionSettingsLine($updatedContents);
+            $this->optionSettingsLine = $rawOptionSettingsLine === null ? null : $this->redactSecrets($rawOptionSettingsLine);
+            $this->parsedSettings = $this->redactSensitiveSettings($settingsParser->parse($updatedContents));
             $this->groupedSettings = $this->buildGroupedSettings($this->settingsSchema(), $this->parsedSettings);
             $this->unknownSettings = $this->buildUnknownSettings($this->settingsSchema(), $this->parsedSettings);
             $this->detectedEggManagedIniKeys = $this->settingsSchema()->getDetectedEggManagedKeys($this->parsedSettings);
             $this->formData = $this->buildFormData($this->groupedSettings);
             $this->quickAccessItems = $this->buildQuickAccessItems($this->settingsSchema(), $this->parsedSettings);
-            $this->settingsFilePreview = substr($updatedContents, 0, 1500);
+            $this->settingsFilePreview = $this->redactSecrets(substr($updatedContents, 0, 1500));
             $this->backups = $settingsFileService->listBackups($server, $this->settingsPath);
             $this->fillFormState();
 
@@ -874,7 +866,7 @@ class PalworldSettingsPage extends Page
 
             // Snapshot the current file before overwriting it, then restore.
             if ($fileService->exists($server, $this->settingsPath)) {
-                $safetyCopy = $this->settingsPath . '.bak-' . now()->format((string) config('palworld-settings-editor.backup_suffix_format', 'Ymd-His'));
+                $safetyCopy = $this->newBackupPath();
                 $fileService->copy($server, $this->settingsPath, $safetyCopy);
             }
 
@@ -956,11 +948,12 @@ class PalworldSettingsPage extends Page
 
             if ($this->settingsFileExists) {
                 $contents = $fileService->read($server, $this->settingsPath);
-                $this->optionSettingsLine = $fileService->getOptionSettingsLine($contents);
-                $this->settingsFilePreview = substr($contents, 0, 1500);
+                $rawLine = $fileService->getOptionSettingsLine($contents);
+                $this->optionSettingsLine = $rawLine === null ? null : $this->redactSecrets($rawLine);
+                $this->settingsFilePreview = $this->redactSecrets(substr($contents, 0, 1500));
 
-                if ($this->optionSettingsLine !== null) {
-                    $this->parsedSettings = $parser->parseOptionSettingsLine($this->optionSettingsLine);
+                if ($rawLine !== null) {
+                    $this->parsedSettings = $this->redactSensitiveSettings($parser->parseOptionSettingsLine($rawLine));
                     $this->groupedSettings = $this->buildGroupedSettings($schema, $this->parsedSettings);
                     $this->unknownSettings = $this->buildUnknownSettings($schema, $this->parsedSettings);
                     $this->detectedEggManagedIniKeys = $schema->getDetectedEggManagedKeys($this->parsedSettings);
@@ -980,6 +973,16 @@ class PalworldSettingsPage extends Page
 
         $this->backups = $fileService->listBackups($server, $this->settingsPath);
         $this->fillFormState();
+    }
+
+    private function newBackupPath(): string
+    {
+        // Append a short random token so two saves/restores within the same second don't
+        // collide on the timestamp and overwrite each other's backup.
+        return $this->settingsPath
+            . '.bak-'
+            . now()->format((string) config('palworld-settings-editor.backup_suffix_format', 'Ymd-His'))
+            . '-' . bin2hex(random_bytes(3));
     }
 
     private function backupPathFor(string $backupName): string
@@ -1378,7 +1381,7 @@ class PalworldSettingsPage extends Page
     {
         $parts = [];
 
-        if (preg_match('/\.bak-(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})(\d{2})$/', $backup['name'], $matches)) {
+        if (preg_match('/\.bak-(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})(\d{2})/', $backup['name'], $matches)) {
             $parts[] = 'Created ' . "{$matches[1]}-{$matches[2]}-{$matches[3]} {$matches[4]}:{$matches[5]}:{$matches[6]}";
         }
 
@@ -1421,10 +1424,39 @@ class PalworldSettingsPage extends Page
     private function redactSecrets(string $text): string
     {
         return preg_replace(
-            '/\b(AdminPassword|ServerPassword)=("[^"]*"|[^,)\r\n]*)/',
+            '/\b(\w*(?:Password|Token|Secret))=("[^"]*"|[^,)\r\n]*)/i',
             '$1="********"',
             $text
         ) ?? $text;
+    }
+
+    /**
+     * Mask the values of sensitive keys (passwords/tokens/secrets) in a parsed settings
+     * map before it is stored in a public property — Livewire dehydrates public properties
+     * into the client payload. These keys are egg-managed and never editable, so masking
+     * their values here has no effect on change detection or writes.
+     *
+     * @param  array<string, mixed>  $parsed
+     * @return array<string, mixed>
+     */
+    private function redactSensitiveSettings(array $parsed): array
+    {
+        foreach ($parsed as $key => $value) {
+            if ($this->isSensitiveKey($key)) {
+                $parsed[$key] = '********';
+            }
+        }
+
+        return $parsed;
+    }
+
+    private function isSensitiveKey(string $key): bool
+    {
+        $key = strtolower($key);
+
+        return str_contains($key, 'password')
+            || str_contains($key, 'token')
+            || str_contains($key, 'secret');
     }
 
     private function buildDebugSection(): Section
@@ -1557,9 +1589,18 @@ class PalworldSettingsPage extends Page
             $old = $this->parsedSettings[$key] ?? null;
             $new = $this->formData[$key] ?? null;
 
-            if (! $this->valuesEqual($key, $old, $new)) {
-                $changed[$key] = $this->coerceForType($key, $new);
+            if ($this->valuesEqual($key, $old, $new)) {
+                continue;
             }
+
+            // Skip an emptied numeric/enum field rather than writing Field="" (an invalid
+            // token the game can't parse); the current file value is left untouched.
+            $type = $this->settingsSchema()->getFieldDefinition($key)['type'] ?? 'string';
+            if (($new === null || $new === '') && in_array($type, ['integer', 'number', 'enum'], true)) {
+                continue;
+            }
+
+            $changed[$key] = $this->coerceForType($key, $new);
         }
 
         return $changed;
