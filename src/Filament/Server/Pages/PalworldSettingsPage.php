@@ -100,6 +100,9 @@ class PalworldSettingsPage extends Page
     /** Bumped by Expand all / Collapse all to force sections to re-render with the new state. */
     public int $collapseNonce = 0;
 
+    /** Live search needle used to filter the editable settings fields by label/key. */
+    public string $fieldSearch = '';
+
     public static function canAccess(): bool
     {
         $server = Filament::getTenant();
@@ -223,14 +226,29 @@ class PalworldSettingsPage extends Page
         } elseif ($this->settingsParseError !== null) {
             $schema[] = $this->buildNoticeSection('settings_parse_error', 'Parse error', $this->settingsParseError);
         } else {
+            $schema[] = Section::make('field_search')
+                ->hiddenLabel()
+                ->columnSpanFull()
+                ->schema([
+                    TextInput::make('__field_search')
+                        ->hiddenLabel()
+                        ->placeholder('Search settings by name or key…')
+                        ->prefixIcon('tabler-search')
+                        ->columnSpanFull()
+                        ->live(debounce: 300)
+                        ->dehydrated(false)
+                        ->afterStateUpdated(fn ($state) => $this->fieldSearch = (string) ($state ?? '')),
+                ]);
+
             if ($this->quickAccessItems !== []) {
                 $schema[] = Section::make('Quick Access')
                     ->description('Common Palworld settings for quick edits.')
                     ->columns(2)
                     ->columnSpanFull()
                     ->collapsible()
-                    ->collapsed($this->resolveCollapsed(false))
-                    ->key($this->sectionKey('quick-access'))
+                    ->collapsed($this->editableCollapsed(false))
+                    ->key($this->editableSectionKey('quick-access'))
+                    ->hiddenWhenAllChildComponentsHidden()
                     ->schema($this->buildEditableFieldComponents($this->quickAccessItems));
             }
 
@@ -245,8 +263,9 @@ class PalworldSettingsPage extends Page
                     ->columns(2)
                     ->columnSpanFull()
                     ->collapsible()
-                    ->collapsed($this->resolveCollapsed(false))
-                    ->key($this->sectionKey($groupKey))
+                    ->collapsed($this->editableCollapsed(false))
+                    ->key($this->editableSectionKey($groupKey))
+                    ->hiddenWhenAllChildComponentsHidden()
                     ->schema($this->buildEditableFieldComponents($group['items']));
             }
 
@@ -258,8 +277,9 @@ class PalworldSettingsPage extends Page
                     ->columns(2)
                     ->columnSpanFull()
                     ->collapsible()
-                    ->collapsed($this->resolveCollapsed(true))
-                    ->key($this->sectionKey('advanced'))
+                    ->collapsed($this->editableCollapsed(true))
+                    ->key($this->editableSectionKey('advanced'))
+                    ->hiddenWhenAllChildComponentsHidden()
                     ->schema($this->buildEditableFieldComponents($advancedGroup['items']));
             }
         }
@@ -722,6 +742,7 @@ class PalworldSettingsPage extends Page
         $definition = $this->settingsSchema()->getFieldDefinition($item['key']) ?? [];
         $description = $this->settingsSchema()->getFieldDescription($item['key']);
         $tooltip = $this->settingsSchema()->getFieldTooltip($item['key']);
+        $visible = fn (): bool => $this->matchesSearch($item['key'], $item['label']);
 
         if ($item['type'] === 'boolean') {
             return Toggle::make($item['key'])
@@ -729,6 +750,7 @@ class PalworldSettingsPage extends Page
                 ->helperText($description)
                 ->hintIcon('tabler-code', tooltip: $tooltip)
                 ->hintColor('info')
+                ->visible($visible)
                 ->disabled(fn (): bool => ! $this->canSave());
         }
 
@@ -746,6 +768,7 @@ class PalworldSettingsPage extends Page
                 ->hintIcon('tabler-code', tooltip: $tooltip)
                 ->hintColor('info')
                 ->options(array_combine($options, $options))
+                ->visible($visible)
                 ->disabled(fn (): bool => ! $this->canSave());
         }
 
@@ -754,6 +777,7 @@ class PalworldSettingsPage extends Page
             ->helperText($description)
             ->hintIcon('tabler-code', tooltip: $tooltip)
             ->hintColor('info')
+            ->visible($visible)
             ->disabled(fn (): bool => ! $this->canSave());
 
         if ($item['type'] === 'integer') {
@@ -894,6 +918,42 @@ class PalworldSettingsPage extends Page
     }
 
     /**
+     * Collapse state for the editable settings sections: force-expand while a
+     * search is active so matches are visible, otherwise honour expand/collapse-all
+     * and the section's own default.
+     */
+    private function editableCollapsed(bool $default): bool
+    {
+        if ($this->searchActive()) {
+            return false;
+        }
+
+        return $this->collapseOverride ?? $default;
+    }
+
+    private function editableSectionKey(string $id): string
+    {
+        return $this->sectionKey($id) . '-' . ($this->searchActive() ? 's' : 'n');
+    }
+
+    private function searchActive(): bool
+    {
+        return trim($this->fieldSearch) !== '';
+    }
+
+    private function matchesSearch(string $key, string $label): bool
+    {
+        if (! $this->searchActive()) {
+            return true;
+        }
+
+        $needle = mb_strtolower(trim($this->fieldSearch));
+
+        return str_contains(mb_strtolower($label), $needle)
+            || str_contains(mb_strtolower($key), $needle);
+    }
+
+    /**
      * @param  array{name: string, path: string, size: mixed, modified: mixed}  $backup
      */
     private function formatBackupMeta(array $backup): string
@@ -1025,7 +1085,10 @@ class PalworldSettingsPage extends Page
     {
         $this->form->fill(array_merge(
             $this->formData,
-            ['startupVariableDisplayValues' => $this->startupVariableDisplayValues],
+            [
+                'startupVariableDisplayValues' => $this->startupVariableDisplayValues,
+                '__field_search' => $this->fieldSearch,
+            ],
         ));
     }
 
