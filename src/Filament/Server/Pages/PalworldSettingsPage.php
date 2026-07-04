@@ -229,13 +229,13 @@ class PalworldSettingsPage extends Page
         } elseif ($this->settingsParseError !== null) {
             $schema[] = $this->buildNoticeSection('settings_parse_error', 'Parse error', $this->settingsParseError);
         } else {
-            $schema[] = Section::make('field_search')
-                ->hiddenLabel()
+            $schema[] = Section::make('Search settings')
+                ->description('Filter the settings below by name or key.')
                 ->columnSpanFull()
                 ->schema([
                     TextInput::make('__field_search')
                         ->hiddenLabel()
-                        ->placeholder('Search settings by name or key…')
+                        ->placeholder('Start typing to filter, e.g. "exp", "capture", "difficulty"…')
                         ->prefixIcon('tabler-search')
                         ->columnSpanFull()
                         ->live(debounce: 300)
