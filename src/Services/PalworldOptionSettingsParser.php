@@ -297,9 +297,9 @@ class PalworldOptionSettingsParser
             return '""';
         }
 
-        if (is_numeric($stringValue)) {
-            return $this->formatNumericString($stringValue);
-        }
+        // Numeric values arrive as real int/float (handled above); a numeric-looking string
+        // here is a genuine string-field value (e.g. RandomizerSeed) and must be quoted as-is
+        // rather than reformatted to 6 decimals.
 
         if (in_array($stringValue, ['None', 'Normal', 'Hard', 'Item', 'ItemAndEquipment', 'All', 'Region', 'Text'], true)) {
             return $stringValue;

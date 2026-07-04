@@ -19,12 +19,14 @@ use Filament\Schemas\Components\Section;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\HtmlString;
+use Illuminate\Validation\ValidationException;
 use JanPauw\PalworldSettingsEditor\Services\PalworldOptionSettingsParser;
 use JanPauw\PalworldSettingsEditor\Services\PalworldServerDetector;
 use JanPauw\PalworldSettingsEditor\Services\PalworldSettingsFileService;
 use JanPauw\PalworldSettingsEditor\Services\PalworldSettingsSchema;
 use JanPauw\PalworldSettingsEditor\Services\PelicanServerStateService;
 use JanPauw\PalworldSettingsEditor\Services\PelicanStartupVariableService;
+use Livewire\Attributes\Locked;
 use Throwable;
 
 class PalworldSettingsPage extends Page
@@ -40,56 +42,80 @@ class PalworldSettingsPage extends Page
 
     protected string $view = 'filament.server.pages.server-form-page';
 
+    // Server-authoritative state — locked so the client cannot tamper with it between
+    // requests (e.g. redirecting the write/backup path or forging the backup allowlist).
+    // Only $formData / $fieldSearch / collapse state are client-mutable.
+
+    #[Locked]
     public bool $isSafeToEdit = false;
 
+    #[Locked]
     public string $stateLabel = 'Unknown';
 
+    #[Locked]
     public string $stateMessage = 'Editing is disabled because the current server state could not be confirmed.';
 
     /** @var array<string, array{name: string, value: mixed, description: ?string, is_sensitive: bool}> */
+    #[Locked]
     public array $startupVariables = [];
 
+    #[Locked]
     public bool $startupVariablesAvailable = false;
 
+    #[Locked]
     public bool $canReadStartup = false;
 
+    #[Locked]
     public string $settingsPath = '';
 
+    #[Locked]
     public bool $settingsFileExists = false;
 
+    #[Locked]
     public ?string $settingsFileError = null;
 
+    #[Locked]
     public ?string $optionSettingsLine = null;
 
+    #[Locked]
     public ?string $settingsFilePreview = null;
 
     /** @var array<string, mixed> */
+    #[Locked]
     public array $parsedSettings = [];
 
     /** @var array<string, array{label: string, items: array<int, array{key: string, label: string, value: mixed, type: string, options?: array<int, string>}>}> */
+    #[Locked]
     public array $groupedSettings = [];
 
     /** @var array<string, mixed> */
+    #[Locked]
     public array $unknownSettings = [];
 
+    #[Locked]
     public ?string $settingsParseError = null;
 
     /** @var array<string, mixed> */
+    #[Locked]
     public array $stateDiagnostics = [];
 
     /** @var array<string, mixed> */
     public array $formData = [];
 
     /** @var array<int, string> */
+    #[Locked]
     public array $detectedEggManagedIniKeys = [];
 
     /** @var array<int, array{key: string, label: string, value: mixed, type: string, options?: array<int, string>}> */
+    #[Locked]
     public array $quickAccessItems = [];
 
     /** @var array<string, string> */
+    #[Locked]
     public array $startupVariableDisplayValues = [];
 
     /** @var array<int, array{name: string, path: string, size: mixed, modified: mixed}> */
+    #[Locked]
     public array $backups = [];
 
     /**
@@ -430,7 +456,7 @@ class PalworldSettingsPage extends Page
     public function hasUnsavedChanges(): bool
     {
         foreach ($this->getEditableFieldKeys() as $key) {
-            if (! $this->valuesEqual($this->parsedSettings[$key] ?? null, $this->formData[$key] ?? null)) {
+            if (! $this->valuesEqual($key, $this->parsedSettings[$key] ?? null, $this->formData[$key] ?? null)) {
                 return true;
             }
         }
@@ -451,7 +477,7 @@ class PalworldSettingsPage extends Page
             $old = $this->parsedSettings[$key] ?? null;
             $new = $this->formData[$key] ?? null;
 
-            if ($this->valuesEqual($old, $new)) {
+            if ($this->valuesEqual($key, $old, $new)) {
                 continue;
             }
 
@@ -493,11 +519,13 @@ class PalworldSettingsPage extends Page
      * Filament as floats (NumberStateCast) while the parsed file values are strings,
      * so numeric values are compared by float value; booleans strictly; the rest as strings.
      */
-    private function valuesEqual(mixed $a, mixed $b): bool
+    private function valuesEqual(string $key, mixed $a, mixed $b): bool
     {
-        if (is_bool($a) || is_bool($b)) {
-            // A toggle is always a real bool, while the parsed file value may be a
-            // non-canonical boolean literal ("1"/"0"/"true"). Coerce and compare as bools.
+        $type = $this->settingsSchema()->getFieldDefinition($key)['type'] ?? 'string';
+
+        if ($type === 'boolean') {
+            // A toggle is a real bool while the parsed file value may be a non-canonical
+            // boolean literal ("1"/"0"/"true"); coerce and compare as bools.
             $boolA = is_bool($a) ? $a : filter_var($a, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
             $boolB = is_bool($b) ? $b : filter_var($b, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
 
@@ -508,11 +536,34 @@ class PalworldSettingsPage extends Page
             return $a === $b;
         }
 
-        if (is_numeric($a) && is_numeric($b)) {
+        // Numeric fields hydrate to floats via Filament while the file value is a string,
+        // so compare by float value — but ONLY for numeric fields, never free-text/enum
+        // fields where "5" and "05" are legitimately different values.
+        if (($type === 'integer' || $type === 'number') && is_numeric($a) && is_numeric($b)) {
             return (float) $a === (float) $b;
         }
 
         return (string) $a === (string) $b;
+    }
+
+    /**
+     * Coerce a form value to the schema-declared PHP type before it is serialized, so
+     * numeric fields serialize as numbers and string fields keep their literal text.
+     */
+    private function coerceForType(string $key, mixed $value): mixed
+    {
+        if ($value === null) {
+            return null;
+        }
+
+        $type = $this->settingsSchema()->getFieldDefinition($key)['type'] ?? 'string';
+
+        return match ($type) {
+            'boolean' => is_bool($value) ? $value : (bool) filter_var($value, FILTER_VALIDATE_BOOLEAN),
+            'integer' => is_numeric($value) ? (int) $value : (string) $value,
+            'number' => is_numeric($value) ? (float) $value : (string) $value,
+            default => (string) $value,
+        };
     }
 
     public function save(): void
@@ -584,6 +635,12 @@ class PalworldSettingsPage extends Page
                 ->title('Settings saved')
                 ->body('Settings saved. A backup was created and the server must be restarted before changes take effect.')
                 ->success()
+                ->send();
+        } catch (ValidationException $exception) {
+            Notification::make()
+                ->title('Invalid settings')
+                ->body(collect($exception->errors())->flatten()->take(6)->implode(' '))
+                ->danger()
                 ->send();
         } catch (Throwable $throwable) {
             report($throwable);
@@ -1357,12 +1414,25 @@ class PalworldSettingsPage extends Page
             ]);
     }
 
+    /**
+     * Mask AdminPassword / ServerPassword in a raw INI fragment so the debug section
+     * cannot leak credentials the plugin masks everywhere else.
+     */
+    private function redactSecrets(string $text): string
+    {
+        return preg_replace(
+            '/\b(AdminPassword|ServerPassword)=("[^"]*"|[^,)\r\n]*)/',
+            '$1="********"',
+            $text
+        ) ?? $text;
+    }
+
     private function buildDebugSection(): Section
     {
         $components = [
             TextEntry::make('debug_option_settings')
                 ->label('Detected OptionSettings line')
-                ->state($this->optionSettingsLine ?? 'OptionSettings line not detected.'),
+                ->state($this->redactSecrets($this->optionSettingsLine ?? 'OptionSettings line not detected.')),
         ];
 
         if ($this->unknownSettings !== []) {
@@ -1374,7 +1444,7 @@ class PalworldSettingsPage extends Page
         if ($this->settingsFilePreview) {
             $components[] = TextEntry::make('debug_settings_preview')
                 ->label('File preview')
-                ->state($this->settingsFilePreview);
+                ->state($this->redactSecrets($this->settingsFilePreview));
         }
 
         foreach ($this->stateDiagnostics as $key => $value) {
@@ -1487,8 +1557,8 @@ class PalworldSettingsPage extends Page
             $old = $this->parsedSettings[$key] ?? null;
             $new = $this->formData[$key] ?? null;
 
-            if (! $this->valuesEqual($old, $new)) {
-                $changed[$key] = $new;
+            if (! $this->valuesEqual($key, $old, $new)) {
+                $changed[$key] = $this->coerceForType($key, $new);
             }
         }
 
