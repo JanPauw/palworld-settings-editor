@@ -38,6 +38,15 @@ out of their way and only touches what's safe to change.
   - Death and Difficulty
   - Base, Guild, and Limits
   - Advanced / present-only fields
+- **Live search** — filter the ~90 settings by name or key; matching sections
+  expand automatically and empty ones hide.
+- **Presets** — one click applies a themed set of values (Casual, Normal/Vanilla,
+  Hardcore, PvP, Fast Progression); only keys present in your file are touched, and
+  nothing is written until you Save.
+- **Save preview** — the Save button shows a confirmation listing every changed
+  value as *old → new* before writing.
+- **Start / restart from the page** — apply saved settings without switching tabs;
+  permission-gated (shown only if you can control the server's power state).
 - **Safe-by-default saving** — writes are blocked unless the server's power state
   resolves to offline/stopped (via Pelican's native `retrieveStatus()`).
 - **Backups manager** — a timestamped copy of the config is created before every
@@ -73,9 +82,12 @@ out of their way and only touches what's safe to change.
 ## Usage
 
 1. **Stop the server.** Saving is disabled while it's running.
-2. Open **Palworld Settings** and adjust the values you want.
-3. **Save.** A backup of the current `PalWorldSettings.ini` is created first.
-4. **Start the server** to apply the changes.
+2. Open **Palworld Settings** and adjust the values you want (use search or a preset
+   to move faster).
+3. **Save.** Review the change preview, then confirm — a backup of the current
+   `PalWorldSettings.ini` is created first.
+4. **Start the server** (there's a *Start server* button right on the page) to apply
+   the changes.
 
 > [!NOTE]
 > Startup-managed values (server name, passwords, RCON, public IP/port) are shown
