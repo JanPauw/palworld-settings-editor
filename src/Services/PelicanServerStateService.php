@@ -33,7 +33,9 @@ class PelicanServerStateService
 
     public function getStatusMessage(mixed $server): string
     {
-        if ($this->resolveStatus($server) === null) {
+        $status = $this->resolveStatus($server);
+
+        if ($status === null) {
             return 'Editing is disabled because the current server state could not be confirmed. Check the node/daemon connection and reload the page.';
         }
 

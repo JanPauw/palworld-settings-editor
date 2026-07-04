@@ -258,6 +258,10 @@ class PalworldOptionSettingsParser
 
         $stringValue = (string) $value;
 
+        // Strip CR/LF so a value can never break out of its token and split the
+        // single-line OptionSettings=(...) payload or inject extra INI lines.
+        $stringValue = str_replace(["\r", "\n"], '', $stringValue);
+
         if ($stringValue === '') {
             return '""';
         }

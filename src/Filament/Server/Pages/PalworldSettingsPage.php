@@ -51,6 +51,8 @@ class PalworldSettingsPage extends Page
 
     public bool $startupVariablesAvailable = false;
 
+    public bool $canReadStartup = false;
+
     public string $settingsPath = '';
 
     public bool $settingsFileExists = false;
@@ -155,9 +157,18 @@ class PalworldSettingsPage extends Page
         $this->stateLabel = $serverStateService->getStateLabel($server);
         $this->stateMessage = $serverStateService->getStatusMessage($server);
         $this->stateDiagnostics = $serverStateService->getStateDiagnostics($server);
-        $this->startupVariables = $startupVariableService->getVariablesForServer($server);
-        $this->startupVariablesAvailable = $this->startupVariables !== [];
-        $this->startupVariableDisplayValues = $this->buildStartupVariableDisplayValues($this->startupVariables);
+
+        // Startup variables are governed by the separate startup.read permission and can
+        // contain secrets (passwords), so only read them when allowed, and never keep the
+        // raw values in a public property (Livewire ships those to the browser).
+        $this->canReadStartup = (bool) user()?->can(SubuserPermission::StartupRead, $server);
+
+        if ($this->canReadStartup) {
+            $rawStartupVariables = $startupVariableService->getVariablesForServer($server);
+            $this->startupVariablesAvailable = $rawStartupVariables !== [];
+            $this->startupVariableDisplayValues = $this->buildStartupVariableDisplayValues($rawStartupVariables);
+            $this->startupVariables = $this->sanitizeStartupVariables($rawStartupVariables);
+        }
 
         try {
             $this->settingsFileExists = $settingsFileService->exists($server, $this->settingsPath);
@@ -218,8 +229,11 @@ class PalworldSettingsPage extends Page
     {
         $schema = [
             $this->buildStatusSection(),
-            $this->buildStartupVariablesSection(),
         ];
+
+        if ($this->canReadStartup) {
+            $schema[] = $this->buildStartupVariablesSection();
+        }
 
         if ($this->settingsFileError !== null) {
             $schema[] = $this->buildNoticeSection('settings_file_error', 'Read error', $this->settingsFileError);
@@ -371,7 +385,7 @@ class PalworldSettingsPage extends Page
                 ->modalDescription('These settings will be written to PalWorldSettings.ini. A timestamped backup is created first.')
                 ->modalSubmitActionLabel('Save changes')
                 ->modalContent(fn (): HtmlString => new HtmlString($this->renderSaveDiff()))
-                ->action('save'),
+                ->action('writeSettings'),
             Action::make('startServer')
                 ->label('Start server')
                 ->icon('tabler-player-play')
@@ -497,6 +511,14 @@ class PalworldSettingsPage extends Page
     }
 
     public function save(): void
+    {
+        // The host server-form-page view submits via wire:submit="save" (e.g. pressing
+        // Enter in a field), so route that through the same confirmation + change-preview
+        // modal as the Save button instead of writing directly.
+        $this->mountAction('save');
+    }
+
+    public function writeSettings(): void
     {
         $serverStateService = app(PelicanServerStateService::class);
         $settingsFileService = app(PalworldSettingsFileService::class);
@@ -1401,6 +1423,25 @@ class PalworldSettingsPage extends Page
             'dead', 'missing', 'removing' => 'danger',
             default => 'gray',
         };
+    }
+
+    /**
+     * Replace each startup variable's raw value with its display value (masked for
+     * sensitive entries) so no secret is dehydrated into the client-side Livewire state.
+     *
+     * @param  array<string, array{name: string, value: mixed, description: ?string, is_sensitive: bool}>  $variables
+     * @return array<string, array{name: string, value: string, description: ?string, is_sensitive: bool}>
+     */
+    private function sanitizeStartupVariables(array $variables): array
+    {
+        $sanitized = [];
+
+        foreach ($variables as $key => $variable) {
+            $variable['value'] = $this->formatStartupVariableValue($variable);
+            $sanitized[$key] = $variable;
+        }
+
+        return $sanitized;
     }
 
     /**
