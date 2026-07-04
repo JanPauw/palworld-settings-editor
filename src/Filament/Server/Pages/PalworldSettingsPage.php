@@ -316,8 +316,29 @@ class PalworldSettingsPage extends Page
                 ->icon('tabler-chevrons-up')
                 ->color('gray')
                 ->action('collapseAll'),
+            Action::make('applyPreset')
+                ->label('Apply preset')
+                ->tooltip('Apply a preset')
+                ->iconButton()
+                ->icon('tabler-wand')
+                ->color('gray')
+                ->disabled(fn (): bool => ! $this->canSave())
+                ->modalHeading('Apply a preset')
+                ->modalDescription('Fill the form with a themed set of values. Only settings present in this server\'s file are changed, and nothing is written until you press Save.')
+                ->modalSubmitActionLabel('Apply preset')
+                ->schema([
+                    Select::make('preset')
+                        ->label('Preset')
+                        ->options($this->getPresetOptions())
+                        ->required()
+                        ->native(false)
+                        ->helperText('Pick a play-style. You can still tweak individual values afterwards.'),
+                ])
+                ->action(fn (array $data) => $this->applyPreset((string) ($data['preset'] ?? ''))),
             Action::make('resetDefaults')
                 ->label('Reset to defaults')
+                ->tooltip('Reset to Palworld defaults')
+                ->iconButton()
                 ->icon('tabler-restore')
                 ->color('gray')
                 ->requiresConfirmation()
@@ -546,6 +567,58 @@ class PalworldSettingsPage extends Page
             ->body('The form was filled with Palworld default values. Review the changes and press Save to apply them.')
             ->success()
             ->send();
+    }
+
+    public function applyPreset(string $preset): void
+    {
+        if (! $this->canSave()) {
+            return;
+        }
+
+        $schema = $this->settingsSchema();
+        $presets = $schema->getPresets();
+
+        if ($preset === '' || ! isset($presets[$preset])) {
+            return;
+        }
+
+        if ($preset === 'normal') {
+            $values = [];
+            foreach ($this->getEditableFieldKeys() as $key) {
+                $values[$key] = $schema->getDefaultValue($key, $this->formData[$key] ?? null);
+            }
+        } else {
+            $values = $presets[$preset]['values'];
+        }
+
+        // Only touch keys already in the form (present in this file + editable).
+        foreach ($values as $key => $value) {
+            if (array_key_exists($key, $this->formData)) {
+                $this->formData[$key] = $value;
+            }
+        }
+
+        $this->fillFormState();
+
+        Notification::make()
+            ->title('Preset applied')
+            ->body('Applied the "' . $presets[$preset]['label'] . '" preset. Review the values and press Save to write them.')
+            ->success()
+            ->send();
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    public function getPresetOptions(): array
+    {
+        $options = [];
+
+        foreach ($this->settingsSchema()->getPresets() as $id => $preset) {
+            $options[$id] = $preset['label'];
+        }
+
+        return $options;
     }
 
     public function restoreBackup(string $backupName): void

@@ -380,4 +380,121 @@ class PalworldSettingsSchema
             default => '',
         };
     }
+
+    /**
+     * Themed presets. Every key must exist in getEditableGroups(); the page skips
+     * any key not present in the current file. 'normal' carries no values — the page
+     * derives it from getDefaultValue() so it always tracks the defaults.
+     *
+     * @return array<string, array{label: string, values: array<string, mixed>}>
+     */
+    public function getPresets(): array
+    {
+        return [
+            'normal' => ['label' => 'Normal / Vanilla', 'values' => []],
+            'casual' => ['label' => 'Casual', 'values' => $this->casualPresetValues()],
+            'hardcore' => ['label' => 'Hardcore', 'values' => $this->hardcorePresetValues()],
+            'pvp' => ['label' => 'PvP', 'values' => $this->pvpPresetValues()],
+            'fast_progression' => ['label' => 'Fast Progression', 'values' => $this->fastProgressionPresetValues()],
+        ];
+    }
+
+    /** @return array<string, mixed> */
+    private function casualPresetValues(): array
+    {
+        return [
+            'ExpRate' => 2.0,
+            'PalCaptureRate' => 2.0,
+            'PalEggDefaultHatchingTime' => 2.0,
+            'CollectionDropRate' => 2.0,
+            'EnemyDropItemRate' => 2.0,
+            'WorkSpeedRate' => 2.0,
+            'PlayerStomachDecreaceRate' => 0.5,
+            'PlayerStaminaDecreaceRate' => 0.5,
+            'PlayerAutoHPRegeneRate' => 2.0,
+            'PlayerAutoHpRegeneRateInSleep' => 2.0,
+            'PalStomachDecreaceRate' => 0.5,
+            'PalStaminaDecreaceRate' => 0.5,
+            'PalAutoHPRegeneRate' => 2.0,
+            'ItemWeightRate' => 0.5,
+            'EquipmentDurabilityDamageRate' => 0.5,
+            'Difficulty' => 'None',
+            'DeathPenalty' => 'None',
+            'bHardcore' => false,
+            'bPalLost' => false,
+            'bEnableNonLoginPenalty' => false,
+            'bEnablePlayerToPlayerDamage' => false,
+            'bEnableFriendlyFire' => false,
+            'bEnableInvaderEnemy' => false,
+            'bEnableFastTravel' => true,
+            'bIsPvP' => false,
+        ];
+    }
+
+    /** @return array<string, mixed> */
+    private function hardcorePresetValues(): array
+    {
+        return [
+            'ExpRate' => 0.5,
+            'PalCaptureRate' => 0.5,
+            'CollectionDropRate' => 0.75,
+            'EnemyDropItemRate' => 0.75,
+            'WorkSpeedRate' => 0.75,
+            'PlayerDamageRateDefense' => 1.5,
+            'PlayerStomachDecreaceRate' => 1.5,
+            'PlayerStaminaDecreaceRate' => 1.5,
+            'PlayerAutoHPRegeneRate' => 0.5,
+            'PlayerAutoHpRegeneRateInSleep' => 0.5,
+            'PalStomachDecreaceRate' => 1.5,
+            'PalStaminaDecreaceRate' => 1.5,
+            'ItemWeightRate' => 1.5,
+            'EquipmentDurabilityDamageRate' => 1.5,
+            'Difficulty' => 'Hard',
+            'DeathPenalty' => 'All',
+            'bHardcore' => true,
+            'bCharacterRecreateInHardcore' => true,
+            'bPalLost' => true,
+            'bEnableNonLoginPenalty' => true,
+            'bEnableInvaderEnemy' => true,
+        ];
+    }
+
+    /** @return array<string, mixed> */
+    private function pvpPresetValues(): array
+    {
+        return [
+            'bIsMultiplay' => true,
+            'bIsPvP' => true,
+            'bEnablePlayerToPlayerDamage' => true,
+            'bEnableFriendlyFire' => true,
+            'bEnableDefenseOtherGuildPlayer' => true,
+            'bCanPickupOtherGuildDeathPenaltyDrop' => true,
+            'DeathPenalty' => 'Item',
+            'bAdditionalDropItemWhenPlayerKillingInPvPMode' => true,
+            'AdditionalDropItemNumWhenPlayerKillingInPvPMode' => 1,
+            'bDisplayPvPItemNumOnWorldMap_BaseCamp' => true,
+            'bDisplayPvPItemNumOnWorldMap_Player' => true,
+            'bEnableInvaderEnemy' => true,
+        ];
+    }
+
+    /** @return array<string, mixed> */
+    private function fastProgressionPresetValues(): array
+    {
+        return [
+            'ExpRate' => 5.0,
+            'PalCaptureRate' => 4.0,
+            'PalSpawnNumRate' => 2.0,
+            'PalEggDefaultHatchingTime' => 1.0,
+            'CollectionDropRate' => 4.0,
+            'CollectionObjectRespawnSpeedRate' => 3.0,
+            'EnemyDropItemRate' => 3.0,
+            'WorkSpeedRate' => 4.0,
+            'ItemWeightRate' => 0.5,
+            'PlayerStaminaDecreaceRate' => 0.5,
+            'PlayerStomachDecreaceRate' => 0.5,
+            'DeathPenalty' => 'None',
+            'bEnableFastTravel' => true,
+        ];
+    }
 }
