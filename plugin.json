@@ -2,7 +2,7 @@
     "id": "palworld-settings-editor",
     "name": "Palworld Settings Editor",
     "author": "Jan Pauw",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "description": "Safely edit Palworld gameplay settings from Pelican Panel.",
     "category": "plugin",
     "url": "https://github.com/JanPauw/palworld-settings-editor",
