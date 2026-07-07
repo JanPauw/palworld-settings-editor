@@ -323,6 +323,11 @@ class PalworldOptionSettingsParser
     /**
      * True only if the whole string is one balanced parenthesised group, e.g. "(Steam,Xbox)".
      * "()x=1" or "(a)(b)" return false so they get quoted rather than passed through raw.
+     *
+     * Quote-aware in the same way as splitTopLevel() / findFirstTopLevelEquals(): parens
+     * inside "..." don't count, and a value with unbalanced (odd, unescaped) quotes returns
+     * false so it is quoted+escaped instead of emitted verbatim — otherwise a stray quote
+     * would open a quoted region on re-parse and swallow every key after it on the line.
      */
     private function isSingleBalancedGroup(string $value): bool
     {
@@ -331,10 +336,31 @@ class PalworldOptionSettingsParser
         }
 
         $depth = 0;
+        $inQuotes = false;
+        $escaped = false;
         $length = strlen($value);
 
         for ($index = 0; $index < $length; $index++) {
             $character = $value[$index];
+
+            if ($escaped) {
+                $escaped = false;
+                continue;
+            }
+
+            if ($character === '\\' && $inQuotes) {
+                $escaped = true;
+                continue;
+            }
+
+            if ($character === '"') {
+                $inQuotes = ! $inQuotes;
+                continue;
+            }
+
+            if ($inQuotes) {
+                continue;
+            }
 
             if ($character === '(') {
                 $depth++;
@@ -352,6 +378,7 @@ class PalworldOptionSettingsParser
             }
         }
 
-        return $depth === 0;
+        // Unbalanced quotes (a stray unescaped ") would corrupt the line on re-parse.
+        return $depth === 0 && ! $inQuotes;
     }
 }
