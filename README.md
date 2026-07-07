@@ -72,12 +72,39 @@ out of their way and only touches what's safe to change.
 
 ## Installation
 
+Install it like any Pelican plugin — pick whichever method fits your setup. Each
+one leaves the plugin **installed and enabled**; afterwards, open a Palworld server
+and go to **Palworld → Palworld Settings**.
+
+**From the Pelican Hub (one-click)**
+
+Open [Palworld Settings Editor on the Hub](https://hub.pelican.dev/plugins/palworld-settings-editor),
+select your connected panel, and click **Install**.
+
+**From the admin UI (upload a zip)**
+
 1. Get the plugin as a zip containing a top-level `palworld-settings-editor/`
    directory (clone this repo and zip the folder, or grab a release archive).
-2. Upload the zip through the Pelican **admin → plugins** UI, or drop it into the
-   panel's `plugins` directory.
-3. Install/enable the plugin in Pelican.
-4. Open a Palworld server and go to **Palworld → Palworld Settings**.
+2. In Pelican, go to **admin → plugins**, import the zip, then install/enable it.
+
+**From the command line (artisan)**
+
+1. Place the `palworld-settings-editor/` directory in your panel's `plugins/`
+   directory (e.g. `/var/www/pelican/plugins/palworld-settings-editor`).
+2. From your panel root, run one of:
+
+   ```bash
+   php artisan p:plugin:install palworld-settings-editor   # install by id
+   php artisan p:plugin:install                            # or pick it from the list
+   ```
+
+   This installs **and enables** the plugin in one step.
+
+> [!TIP]
+> Run artisan as the user that owns your panel files (often `www-data`), not as
+> `root`, so the plugin's files stay writable by the panel — e.g.
+> `sudo -u www-data php artisan p:plugin:install palworld-settings-editor`. This CLI
+> method is also a reliable fallback if a Hub or admin-UI install fails.
 
 ## Usage
 
