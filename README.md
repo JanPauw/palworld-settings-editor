@@ -40,7 +40,7 @@ out of their way and only touches what's safe to change.
   - Death and Difficulty
   - Base, Guild, and Limits
   - Advanced / Present-only Fields
-- **Live search** — filter the ~90 settings by name or key; matching sections
+- **Live search** — filter the ~100 settings by name or key; matching sections
   expand automatically and empty ones hide.
 - **Presets** — one click applies a themed set of values (Casual, Normal/Vanilla,
   Hardcore, PvP, Fast Progression); only keys present in your file are touched, and
