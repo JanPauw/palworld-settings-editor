@@ -29,16 +29,17 @@ out of their way and only touches what's safe to change.
   server sidebar using native Filament controls and the panel's own page layout,
   so it sits naturally alongside the built-in *Startup* and *Settings* pages.
 - **Palworld-only** — the page only appears on Palworld servers, detected from the
-  server egg (tags, name, and startup command).
-- **Typed controls** — numbers, integers, toggles, text fields, and enums, each
-  with sensible min/max/step bounds, labels, helper text, and tooltips.
+  server egg (tags, name, startup command, and Docker image).
+- **Typed controls** — numbers and integers (with sensible min/max/step bounds),
+  plus toggles, text fields, and enums — each with clear labels, helper text, and
+  tooltips.
 - **Grouped settings** — organized into readable sections:
   - Gameplay Rates
   - Damage, Stamina, Hunger, HP
   - Time and World Behaviour
   - Death and Difficulty
   - Base, Guild, and Limits
-  - Advanced / present-only fields
+  - Advanced / Present-only Fields
 - **Live search** — filter the ~90 settings by name or key; matching sections
   expand automatically and empty ones hide.
 - **Presets** — one click applies a themed set of values (Casual, Normal/Vanilla,
@@ -136,10 +137,10 @@ egg and its
 [PalworldServerConfigParser](https://github.com/pelican-eggs/Palworld-Config-Parser-Tool).
 
 The config parser runs on every boot but does an **in-place** update of only the INI
-keys whose startup variables are set (server name, passwords, RCON, max players, IP/port)
-and preserves everything else. This plugin edits a **disjoint** set of gameplay/world
-keys, so your edits are not overwritten on restart. The keys the egg manages are shown
-read-only here — change those from the **Startup** tab instead.
+keys whose startup variables are set (server name/description, passwords, RCON, max
+players, IP/port) and preserves everything else. This plugin edits a **disjoint** set
+of gameplay/world keys, so your edits are not overwritten on restart. The keys the egg
+manages are shown read-only here — change those from the **Startup** tab instead.
 
 > [!NOTE]
 > If you add your own egg variable for a gameplay setting this plugin also edits, the
@@ -153,9 +154,9 @@ read-only here — change those from the **Startup** tab instead.
 <summary><strong>The Palworld Settings page doesn't appear</strong></summary>
 
 The page only shows on Palworld servers. It detects Palworld from the egg's tags,
-name, and startup command (which contains `PalServer` / `PalworldServerConfigParser`).
-If it's missing on a genuine Palworld server, the egg may be packaged unusually —
-confirm the server uses the Palworld egg.
+name, startup command (which contains `PalServer` / `PalworldServerConfigParser`),
+and Docker image. If it's missing on a genuine Palworld server, the egg may be
+packaged unusually — confirm the server uses the Palworld egg.
 </details>
 
 <details>
@@ -178,8 +179,10 @@ be confirmed safely — saving stays disabled.
 
 The power actions are permission-gated: *Start* needs the `control.start` and
 *Restart* the `control.restart` subuser permission on the server (an owner/admin has
-both). *Start* shows while the server is stopped; *Restart* shows whenever the server
-isn't confirmed stopped (running, or when the daemon state can't be read).
+both). *Start* shows while the server is stopped **and** `PalWorldSettings.ini` exists
+(if the config file hasn't been generated yet the button stays hidden — see *Config
+file missing* above); *Restart* shows whenever the server isn't confirmed stopped
+(running, or when the daemon state can't be read).
 </details>
 
 <details>
