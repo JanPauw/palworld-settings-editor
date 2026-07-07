@@ -139,6 +139,10 @@ class PelicanStartupVariableService
             return true;
         }
 
-        return str_contains($name, 'PASSWORD');
+        // Mirror PalworldSettingsPage::isSensitiveKey() so any password/token/secret-named
+        // variable is masked by default, even when the egg doesn't flag it sensitive.
+        return str_contains($name, 'PASSWORD')
+            || str_contains($name, 'TOKEN')
+            || str_contains($name, 'SECRET');
     }
 }

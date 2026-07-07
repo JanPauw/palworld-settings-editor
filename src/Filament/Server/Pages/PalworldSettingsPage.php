@@ -33,6 +33,9 @@ class PalworldSettingsPage extends Page
     use InteractsWithFormActions;
     use InteractsWithForms;
 
+    /** Max bytes of the settings file shown in the (redacted) debug preview. */
+    private const PREVIEW_BYTES = 1500;
+
     protected static string|\BackedEnum|null $navigationIcon = 'heroicon-o-adjustments-horizontal';
 
     protected static ?string $slug = 'palworld-settings';
@@ -162,8 +165,6 @@ class PalworldSettingsPage extends Page
         PelicanServerStateService $serverStateService,
         PelicanStartupVariableService $startupVariableService,
         PalworldSettingsFileService $settingsFileService,
-        PalworldOptionSettingsParser $settingsParser,
-        PalworldSettingsSchema $settingsSchema,
     ): void {
         $server = Filament::getTenant();
         $this->settingsPath = $this->resolveSettingsPath($settingsFileService, $server);
@@ -190,18 +191,7 @@ class PalworldSettingsPage extends Page
 
             if ($this->settingsFileExists) {
                 $contents = $settingsFileService->read($server, $this->settingsPath);
-                $rawLine = $settingsFileService->getOptionSettingsLine($contents);
-                $this->optionSettingsLine = $rawLine === null ? null : $this->redactSecrets($rawLine);
-                $this->settingsFilePreview = $this->redactSecrets(substr($contents, 0, 1500));
-
-                if ($rawLine !== null) {
-                    $this->parsedSettings = $this->redactSensitiveSettings($settingsParser->parseOptionSettingsLine($rawLine));
-                    $this->groupedSettings = $this->buildGroupedSettings($settingsSchema, $this->parsedSettings);
-                    $this->unknownSettings = $this->buildUnknownSettings($settingsSchema, $this->parsedSettings);
-                    $this->detectedEggManagedIniKeys = $settingsSchema->getDetectedEggManagedKeys($this->parsedSettings);
-                    $this->formData = $this->buildFormData($this->groupedSettings);
-                    $this->quickAccessItems = $this->buildQuickAccessItems($settingsSchema, $this->parsedSettings);
-                }
+                $this->hydrateSettingsFromContents($contents);
             }
         } catch (Throwable $throwable) {
             report($throwable);
@@ -261,6 +251,12 @@ class PalworldSettingsPage extends Page
             );
         } elseif ($this->settingsParseError !== null) {
             $schema[] = $this->buildNoticeSection('settings_parse_error', 'Parse error', $this->settingsParseError);
+        } elseif ($this->optionSettingsLine === null) {
+            $schema[] = $this->buildNoticeSection(
+                'settings_line_missing',
+                'Status',
+                'PalWorldSettings.ini was found but has no OptionSettings line yet. Start the Palworld server once to fully generate it, then stop the server before editing.'
+            );
         } else {
             $schema[] = Section::make('Search settings')
                 ->description('Filter the settings below by name or key.')
@@ -439,18 +435,41 @@ class PalworldSettingsPage extends Page
 
     public function canSave(): bool
     {
-        return $this->isSafeToEdit && $this->settingsFileExists && $this->settingsParseError === null;
+        return $this->isSafeToEdit
+            && $this->settingsFileExists
+            && $this->optionSettingsLine !== null
+            && $this->settingsParseError === null;
     }
 
     public function hasUnsavedChanges(): bool
     {
         foreach ($this->getEditableFieldKeys() as $key) {
-            if (! $this->valuesEqual($key, $this->parsedSettings[$key] ?? null, $this->formData[$key] ?? null)) {
+            if ($this->isWritableChange($key)) {
                 return true;
             }
         }
 
         return false;
+    }
+
+    /**
+     * Whether $key's current form value differs from the file value AND is a change
+     * writeSettings() would actually persist. An emptied numeric/enum field is skipped
+     * on write (never written as `Key=`), so it must not count as an unsaved change
+     * either — otherwise the dirty indicator and the write path disagree.
+     */
+    private function isWritableChange(string $key): bool
+    {
+        $old = $this->parsedSettings[$key] ?? null;
+        $new = $this->formData[$key] ?? null;
+
+        if ($this->valuesEqual($key, $old, $new)) {
+            return false;
+        }
+
+        $type = $this->settingsSchema()->getFieldDefinition($key)['type'] ?? 'string';
+
+        return ! (($new === null || $new === '') && in_array($type, ['integer', 'number', 'enum'], true));
     }
 
     /**
@@ -541,7 +560,10 @@ class PalworldSettingsPage extends Page
         }
 
         try {
-            $this->validateFormData();
+            // Validate only the keys we're about to write. A pre-existing out-of-range value
+            // in an untouched field (e.g. a boosted ExpRate > the schema max) must not block a
+            // save that doesn't touch it — writeSettings only ever rewrites the changed keys.
+            $this->validateFormData(array_keys($changes));
 
             $contents = $settingsFileService->read($server, $this->settingsPath);
             $backupPath = $this->newBackupPath();
@@ -551,15 +573,7 @@ class PalworldSettingsPage extends Page
             $updatedContents = $settingsParser->write($contents, $changes);
             $settingsFileService->write($server, $this->settingsPath, $updatedContents);
 
-            $rawOptionSettingsLine = $settingsFileService->getOptionSettingsLine($updatedContents);
-            $this->optionSettingsLine = $rawOptionSettingsLine === null ? null : $this->redactSecrets($rawOptionSettingsLine);
-            $this->parsedSettings = $this->redactSensitiveSettings($settingsParser->parse($updatedContents));
-            $this->groupedSettings = $this->buildGroupedSettings($this->settingsSchema(), $this->parsedSettings);
-            $this->unknownSettings = $this->buildUnknownSettings($this->settingsSchema(), $this->parsedSettings);
-            $this->detectedEggManagedIniKeys = $this->settingsSchema()->getDetectedEggManagedKeys($this->parsedSettings);
-            $this->formData = $this->buildFormData($this->groupedSettings);
-            $this->quickAccessItems = $this->buildQuickAccessItems($this->settingsSchema(), $this->parsedSettings);
-            $this->settingsFilePreview = $this->redactSecrets(substr($updatedContents, 0, 1500));
+            $this->hydrateSettingsFromContents($updatedContents);
             $this->backups = $settingsFileService->listBackups($server, $this->settingsPath);
             $this->fillFormState();
 
@@ -636,8 +650,9 @@ class PalworldSettingsPage extends Page
                     $fileDefaults = $parser->parse($fileService->read($server, $candidate));
                     break;
                 }
-            } catch (Throwable) {
-                // Ignore and fall back to schema defaults.
+            } catch (Throwable $throwable) {
+                // Log the failure but still fall back to the schema's reference defaults.
+                report($throwable);
             }
         }
 
@@ -870,8 +885,6 @@ class PalworldSettingsPage extends Page
     private function reloadFromFile(mixed $server): void
     {
         $fileService = app(PalworldSettingsFileService::class);
-        $parser = app(PalworldOptionSettingsParser::class);
-        $schema = $this->settingsSchema();
 
         $this->settingsFileError = null;
         $this->settingsParseError = null;
@@ -888,18 +901,7 @@ class PalworldSettingsPage extends Page
 
             if ($this->settingsFileExists) {
                 $contents = $fileService->read($server, $this->settingsPath);
-                $rawLine = $fileService->getOptionSettingsLine($contents);
-                $this->optionSettingsLine = $rawLine === null ? null : $this->redactSecrets($rawLine);
-                $this->settingsFilePreview = $this->redactSecrets(substr($contents, 0, 1500));
-
-                if ($rawLine !== null) {
-                    $this->parsedSettings = $this->redactSensitiveSettings($parser->parseOptionSettingsLine($rawLine));
-                    $this->groupedSettings = $this->buildGroupedSettings($schema, $this->parsedSettings);
-                    $this->unknownSettings = $this->buildUnknownSettings($schema, $this->parsedSettings);
-                    $this->detectedEggManagedIniKeys = $schema->getDetectedEggManagedKeys($this->parsedSettings);
-                    $this->formData = $this->buildFormData($this->groupedSettings);
-                    $this->quickAccessItems = $this->buildQuickAccessItems($schema, $this->parsedSettings);
-                }
+                $this->hydrateSettingsFromContents($contents);
             }
         } catch (Throwable $throwable) {
             report($throwable);
@@ -913,6 +915,40 @@ class PalworldSettingsPage extends Page
 
         $this->backups = $fileService->listBackups($server, $this->settingsPath);
         $this->fillFormState();
+    }
+
+    /**
+     * Read the parsed OptionSettings out of raw file contents and rebuild every derived
+     * view-model property from it — routing the raw line, file preview, and parsed map
+     * through the redaction helpers (§6) before they land in a public (dehydrated) property.
+     * Single source of truth for the read -> redact -> parse -> rebuild sequence shared by
+     * mount(), reloadFromFile(), and writeSettings(), so the redaction contract lives in one place.
+     */
+    private function hydrateSettingsFromContents(string $contents): void
+    {
+        $fileService = app(PalworldSettingsFileService::class);
+        $parser = app(PalworldOptionSettingsParser::class);
+        $schema = $this->settingsSchema();
+
+        $rawLine = $fileService->getOptionSettingsLine($contents);
+        $this->optionSettingsLine = $rawLine === null ? null : $this->redactSecrets($rawLine);
+        $this->settingsFilePreview = $this->redactSecrets(substr($contents, 0, self::PREVIEW_BYTES));
+
+        $this->parsedSettings = [];
+        $this->groupedSettings = [];
+        $this->unknownSettings = [];
+        $this->detectedEggManagedIniKeys = [];
+        $this->formData = [];
+        $this->quickAccessItems = [];
+
+        if ($rawLine !== null) {
+            $this->parsedSettings = $this->redactSensitiveSettings($parser->parseOptionSettingsLine($rawLine));
+            $this->groupedSettings = $this->buildGroupedSettings($schema, $this->parsedSettings);
+            $this->unknownSettings = $this->buildUnknownSettings($schema, $this->parsedSettings);
+            $this->detectedEggManagedIniKeys = $schema->getDetectedEggManagedKeys($this->parsedSettings);
+            $this->formData = $this->buildFormData($this->groupedSettings);
+            $this->quickAccessItems = $this->buildQuickAccessItems($schema, $this->parsedSettings);
+        }
     }
 
     private function newBackupPath(): string
@@ -1368,8 +1404,11 @@ class PalworldSettingsPage extends Page
      */
     private function redactSecrets(string $text): string
     {
+        // The quoted-value branch is escape-aware ("(?:\\.|[^"\\])*") so it consumes escaped
+        // quotes (\") to the true closing quote — a secret value containing a double-quote can
+        // no longer leave its tail fragment unmasked. The unquoted branch masks bare values.
         return preg_replace(
-            '/\b(\w*(?:Password|Token|Secret))=("[^"]*"|[^,)\r\n]*)/i',
+            '/\b(\w*(?:Password|Token|Secret))=("(?:\\\\.|[^"\\\\])*"|[^,)\r\n]*)/i',
             '$1="********"',
             $text
         ) ?? $text;
@@ -1531,32 +1570,32 @@ class PalworldSettingsPage extends Page
         $changed = [];
 
         foreach ($this->getEditableFieldKeys() as $key) {
-            $old = $this->parsedSettings[$key] ?? null;
-            $new = $this->formData[$key] ?? null;
-
-            if ($this->valuesEqual($key, $old, $new)) {
+            if (! $this->isWritableChange($key)) {
                 continue;
             }
 
-            // Skip an emptied numeric/enum field rather than writing Field="" (an invalid
-            // token the game can't parse); the current file value is left untouched.
-            $type = $this->settingsSchema()->getFieldDefinition($key)['type'] ?? 'string';
-            if (($new === null || $new === '') && in_array($type, ['integer', 'number', 'enum'], true)) {
-                continue;
-            }
-
-            $changed[$key] = $this->coerceForType($key, $new);
+            $changed[$key] = $this->coerceForType($key, $this->formData[$key] ?? null);
         }
 
         return $changed;
     }
 
-    private function validateFormData(): void
+    /**
+     * @param  array<int, string>  $onlyKeys  When non-empty, only these field keys are validated
+     *                                         (the changed set). A pre-existing out-of-range value in
+     *                                         an untouched field then can't block a save that never writes it.
+     */
+    private function validateFormData(array $onlyKeys = []): void
     {
+        $restrict = $onlyKeys !== [];
         $rules = [];
 
         foreach ($this->groupedSettings as $group) {
             foreach ($group['items'] as $item) {
+                if ($restrict && ! in_array($item['key'], $onlyKeys, true)) {
+                    continue;
+                }
+
                 $ruleKey = 'formData.' . $item['key'];
                 $rules[$ruleKey] = $this->buildValidationRules($item);
             }
