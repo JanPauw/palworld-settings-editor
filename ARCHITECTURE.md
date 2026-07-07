@@ -28,7 +28,7 @@ stays away from the values the Palworld egg owns (see §7).
 | --- | --- |
 | `plugin.json` | Pelican plugin manifest (id, namespace, entry class, panels, `meta`). No `composer.json` — Pelican autoloads from here. |
 | `src/PalworldSettingsEditorPlugin.php` | Filament `Plugin`: `register()` discovers pages, `boot()` merges config. |
-| `src/Filament/Server/Pages/PalworldSettingsPage.php` | The page. Everything user-facing lives here: state, form schema, header actions, save/backup/power logic, validation, redaction. ~1400 lines — the heart of the plugin. |
+| `src/Filament/Server/Pages/PalworldSettingsPage.php` | The page. Everything user-facing lives here: state, form schema, header actions, save/backup/power logic, validation, redaction. ~1650 lines — the heart of the plugin. |
 | `src/Services/PalworldSettingsSchema.php` | Static knowledge: field definitions (label/type/bounds), groups, egg-managed key list, defaults, presets. |
 | `src/Services/PalworldOptionSettingsParser.php` | Parse/rewrite the `OptionSettings=(...)` line. Format-critical; symmetric parse↔serialize. |
 | `src/Services/PalworldSettingsFileService.php` | Daemon file API wrapper: read/write/copy, backup listing/deletion. |
@@ -37,8 +37,11 @@ stays away from the values the Palworld egg owns (see §7).
 | `src/Services/PalworldServerDetector.php` | Multi-signal "is this a Palworld server?" for page visibility. |
 | `config/palworld-settings-editor.php` | `settings_path`, `backup_suffix_format`, `show_debug_section`. |
 
-There is **no** `resources/views/` on `main`: the page renders through Pelican's
-own server-form-page Blade view (see §4).
+The plugin ships **one** Blade view —
+`resources/views/filament/server/pages/palworld-settings-page.blade.php`, a copy
+of Pelican's native server-form-page view with the page-level `wire:submit`
+removed (see §4 and §11). It keeps the native `id` and root `wire:key` so the page
+still looks and morphs like a native one.
 
 ---
 
@@ -66,9 +69,11 @@ own server-form-page Blade view (see §4).
 
 Extends `Filament\Pages\Page`; uses `InteractsWithForms` + `InteractsWithFormActions`.
 
-- **View:** `protected string $view = 'filament.server.pages.server-form-page';`
-  — the **host panel's own** view, which is what makes the page look native
-  (same header/action layout as Startup/Settings). See the wire:submit gotcha in §11.
+- **View:** `protected string $view = 'palworld-settings-editor::filament.server.pages.palworld-settings-page';`
+  — a copy of the host panel's native `server-form-page` view with the page-level
+  `wire:submit="save"` removed (see §11). It keeps the native `id="form"` and root
+  `wire:key`, so the page still looks native (same header/action layout as
+  Startup/Settings) and Livewire DOM morphing stays stable.
 - **Access:** `canAccess()` = `parent::canAccess()` **and** a tenant exists **and**
   `PalworldServerDetector::isPalworldServer()` **and** the user has
   `SubuserPermission::FileReadContent` on the server.
@@ -117,9 +122,10 @@ fields by label/key and auto-expands matching sections.
 
 ### Save flow
 
-`save()` just calls `$this->mountAction('save')` — routing both the Save button
-and the view's `wire:submit` through the same confirmation modal, which previews
-every change as *old → new* (`renderSaveDiff()`), then calls `writeSettings()`.
+The **Save** header action (or its `mod+s` key binding) calls `writeSettings()`
+**directly** — there is no confirmation modal or change preview. This is safe
+because the write is non-destructive (only changed keys, always backed up first),
+and the custom view (§11) is what stops a stray bubbled submit from triggering it.
 
 `writeSettings()` is the guarded write path, in order:
 1. Re-check `SubuserPermission::FileUpdate` (never trust the button being visible).
@@ -156,7 +162,7 @@ buildGroupedSettings() + Schema groups        →  sections / fields
         │
         ▼
 $formData  ⇄  Filament form (user edits)
-        │  Save (confirm modal)
+        │  Save (writes directly — no confirmation modal)
         ▼
 getChangedFormData() → coerceForType() → validateFormData()
         │  backup current file
@@ -270,21 +276,27 @@ The payload is a single line: `OptionSettings=(Key=Value,Key2=Value2,...)`.
   in values are written literally, not treated as backreferences). **Unknown keys
   are preserved.**
 - **Per-field validation** (`buildValidationRules`): numbers/integers get
-  `numeric`/`integer` + min/max; enums get `in:` including the current value;
-  strings are length-bounded. `getChangedFormData()` skips emptied numeric/enum
-  fields so it never writes `Key=`.
+  `numeric`/`integer` + min/max (when the schema defines them); booleans get
+  `boolean`; enums get `in:` (including the current on-disk/preset value);
+  **strings and any other type get only `nullable`** — no length/format bound, so
+  string safety comes from the parser's CR/LF stripping and quoting (above), not
+  from validation. `getChangedFormData()` skips emptied numeric/enum fields so it
+  never writes `Key=`.
 
 ---
 
 ## 11. Gotchas & known considerations
 
-- **`wire:submit` on the host view.** The native `server-form-page` view has a
-  page-level `wire:submit="save"`. Submit events bubbling up from *action modals*
-  (preset/reset/restart/restore/delete confirmations) can be caught by it and
-  re-trigger the Save modal. `save()` deliberately routes through
-  `mountAction('save')` to make that harmless. **If you change the save UX or add
-  a custom view, verify that confirming any other modal does not re-open Save.**
-  (There is active work exploring a trimmed custom view for exactly this reason.)
+- **`wire:submit` and the custom view.** Pelican's native `server-form-page` view
+  puts `wire:submit="save"` on the page root, which is an ancestor of every action
+  modal. Confirming any modal (preset/reset/restart/restore/delete) bubbles a
+  `submit` event up to it, and because the **Save** action writes to disk directly
+  (no confirmation of its own), that bubbled submit would silently trigger an
+  immediate write. The plugin therefore **ships a custom view** — a copy of the
+  native one **without** the page-level `wire:submit`, but keeping `id="form"` and
+  the root `wire:key` so morphing and the shared modal container stay stable.
+  **If you touch the save UX or the view, preserve this invariant: confirming any
+  other modal must never cause a write.** The blade file has the full rationale.
 - **`#[Locked]` ≠ not-dehydrated.** It blocks client *writes*, not serialization
   to the browser. Redact secrets regardless (§6).
 - **`missing` status is not safe.** Don't "simplify" `statusIsOffline()` to
