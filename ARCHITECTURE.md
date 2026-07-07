@@ -26,7 +26,7 @@ stays away from the values the Palworld egg owns (see §7).
 
 | Path | Responsibility |
 | --- | --- |
-| `plugin.json` | Pelican plugin manifest (id, namespace, entry class, panels, `meta`). No `composer.json` — Pelican autoloads from here. |
+| `plugin.json` | Pelican plugin manifest (id, namespace, entry class, panels). No `meta` block (hub-first, §3). No `composer.json` — Pelican autoloads from here. |
 | `src/PalworldSettingsEditorPlugin.php` | Filament `Plugin`: `register()` discovers pages, `boot()` merges config. |
 | `src/Filament/Server/Pages/PalworldSettingsPage.php` | The page. Everything user-facing lives here: state, form schema, header actions, save/backup/power logic, validation, redaction. ~1650 lines — the heart of the plugin. |
 | `src/Services/PalworldSettingsSchema.php` | Static knowledge: field definitions (label/type/bounds), groups, egg-managed key list, defaults, presets. |
@@ -56,12 +56,14 @@ still looks and morphs like a native one.
   with **already-set values winning** (so operator/env overrides are honoured).
   The plugin also passes inline defaults at every `config()` read, so it still
   works if the file is somehow absent.
-- **`plugin.json` `meta.status: "enabled"` must stay.** It is what makes the
-  panel auto-enable the plugin on a zip upload. Removing it (which the official
-  `pelican-dev/plugins` CI validator wants) makes zip installs land **disabled**,
-  requiring a manual `artisan` enable. This repo self-hosts via zip and is not
-  submitted to the official registry, so `meta` stays. This was removed once and
-  had to be restored — do not remove it again.
+- **`plugin.json` must not contain a `meta` block.** The plugin is now published
+  hub-first (<https://hub.pelican.dev>), and the hub validator rejects `meta` —
+  it's a local-development-only field, and the hub's install flow handles enabling
+  the plugin itself. Do not re-add it.
+  - **Trade-off:** `meta.status: "enabled"` was what auto-enabled the plugin on a
+    **manual zip upload**. Without it, zip installs land **disabled** and need a
+    manual `artisan` enable. That is the accepted cost of hub-first distribution;
+    hub installs are unaffected.
 
 ---
 
@@ -315,8 +317,8 @@ The payload is a single line: `OptionSettings=(Key=Value,Key2=Value2,...)`.
 **Conventions**
 - Match the native Pelican/Filament look; avoid heavy custom theming and custom
   Blade unless there's a concrete reason (and then mind §11).
-- Keep `plugin.json` `meta.status` (§3). No `composer.json`. Config is auto-loaded
-  — no publish step.
+- No `meta` block in `plugin.json` (§3 — hub-first). No `composer.json`. Config is
+  auto-loaded — no publish step.
 - Follow the existing service split; keep the parser symmetric and unknown-key-safe.
 
 **Adding an editable setting**
