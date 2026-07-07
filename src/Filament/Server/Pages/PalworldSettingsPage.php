@@ -18,7 +18,6 @@ use Filament\Schemas\Components\Component;
 use Filament\Schemas\Components\Section;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Validator;
-use Illuminate\Support\HtmlString;
 use Illuminate\Validation\ValidationException;
 use JanPauw\PalworldSettingsEditor\Services\PalworldOptionSettingsParser;
 use JanPauw\PalworldSettingsEditor\Services\PalworldServerDetector;
@@ -40,7 +39,11 @@ class PalworldSettingsPage extends Page
 
     protected static ?int $navigationSort = 30;
 
-    protected string $view = 'filament.server.pages.server-form-page';
+    // Custom view (a copy of the native server-form-page WITHOUT a page-level
+    // wire:submit) — see the view file for why. The native view's wire:submit="save"
+    // caught submit events bubbling up from every action modal, re-opening the Save
+    // confirmation modal after any preset/reset/restart/restore/delete confirmation.
+    protected string $view = 'palworld-settings-editor::filament.server.pages.palworld-settings-page';
 
     // Server-authoritative state — locked so the client cannot tamper with it between
     // requests (e.g. redirecting the write/backup path or forging the backup allowlist).
@@ -393,11 +396,6 @@ class PalworldSettingsPage extends Page
                 ->disabled(fn (): bool => ! $this->canSave())
                 ->authorize(fn (): bool => (bool) user()?->can(SubuserPermission::FileUpdate, Filament::getTenant()))
                 ->keyBindings(['mod+s'])
-                ->requiresConfirmation()
-                ->modalHeading('Review changes before saving')
-                ->modalDescription('These settings will be written to PalWorldSettings.ini. A timestamped backup is created first.')
-                ->modalSubmitActionLabel('Save changes')
-                ->modalContent(fn (): HtmlString => new HtmlString($this->renderSaveDiff()))
                 ->action('writeSettings'),
             Action::make('startServer')
                 ->label('Start server')
@@ -456,56 +454,6 @@ class PalworldSettingsPage extends Page
     }
 
     /**
-     * Escaped HTML change list for the Save confirmation modal: each editable key
-     * that differs from the current file value, shown as "Label: old -> new".
-     */
-    public function renderSaveDiff(): string
-    {
-        $schema = $this->settingsSchema();
-        $rows = [];
-
-        foreach ($this->getEditableFieldKeys() as $key) {
-            $old = $this->parsedSettings[$key] ?? null;
-            $new = $this->formData[$key] ?? null;
-
-            if ($this->valuesEqual($key, $old, $new)) {
-                continue;
-            }
-
-            $label = $schema->getFieldDefinition($key)['label'] ?? $key;
-
-            $rows[] = sprintf(
-                '<li><span class="font-medium">%s</span>: '
-                . '<span class="line-through opacity-70">%s</span> '
-                . '<span aria-hidden="true">&rarr;</span> '
-                . '<span class="font-semibold">%s</span></li>',
-                e($label),
-                e($this->formatDiffValue($old)),
-                e($this->formatDiffValue($new)),
-            );
-        }
-
-        if ($rows === []) {
-            return '<p class="text-sm text-gray-500 dark:text-gray-400">No changes to save.</p>';
-        }
-
-        return '<ul class="list-disc space-y-1 ps-5 text-sm">' . implode('', $rows) . '</ul>';
-    }
-
-    private function formatDiffValue(mixed $value): string
-    {
-        if ($value === null || $value === '') {
-            return '(unset)';
-        }
-
-        if (is_bool($value)) {
-            return $value ? 'True' : 'False';
-        }
-
-        return (string) $value;
-    }
-
-    /**
      * Type-aware equality for change detection. Numeric fields come back from
      * Filament as floats (NumberStateCast) while the parsed file values are strings,
      * so numeric values are compared by float value; booleans strictly; the rest as strings.
@@ -555,14 +503,6 @@ class PalworldSettingsPage extends Page
             'number' => is_numeric($value) ? (float) $value : (string) $value,
             default => (string) $value,
         };
-    }
-
-    public function save(): void
-    {
-        // The host server-form-page view submits via wire:submit="save" (e.g. pressing
-        // Enter in a field), so route that through the same confirmation + change-preview
-        // modal as the Save button instead of writing directly.
-        $this->mountAction('save');
     }
 
     public function writeSettings(): void
@@ -1314,6 +1254,11 @@ class PalworldSettingsPage extends Page
                         ->authorize(fn (): bool => (bool) user()?->can(SubuserPermission::FileDelete, Filament::getTenant()))
                         ->action(fn () => $this->deleteBackup($name)),
                 ])
+                    // Stable key per backup so that when the list changes after a
+                    // restore/delete, Livewire morphs the surviving rows in place and
+                    // keeps their action triggers bound (otherwise the next
+                    // restore/delete can silently fail to open its confirmation modal).
+                    ->key('backup_actions_' . $hash)
                     ->columnSpan(1);
             }
         }
@@ -1576,7 +1521,7 @@ class PalworldSettingsPage extends Page
     }
 
     /**
-     * Editable keys whose form value differs from the current file value, so save()
+     * Editable keys whose form value differs from the current file value, so writeSettings()
      * rewrites only what actually changed (leaving untouched entries byte-for-byte).
      *
      * @return array<string, mixed>

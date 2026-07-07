@@ -44,8 +44,6 @@ out of their way and only touches what's safe to change.
 - **Presets** — one click applies a themed set of values (Casual, Normal/Vanilla,
   Hardcore, PvP, Fast Progression); only keys present in your file are touched, and
   nothing is written until you Save.
-- **Save preview** — the Save button shows a confirmation listing every changed
-  value as *old → new* before writing.
 - **Start / restart from the page** — apply saved settings without switching tabs;
   permission-gated (shown only if you can control the server's power state).
 - **Safe-by-default saving** — writes are blocked unless the server's power state
@@ -85,8 +83,8 @@ out of their way and only touches what's safe to change.
 1. **Stop the server.** Saving is disabled while it's running.
 2. Open **Palworld Settings** and adjust the values you want (use search or a preset
    to move faster).
-3. **Save.** Review the change preview, then confirm — a backup of the current
-   `PalWorldSettings.ini` is created first.
+3. **Save.** A backup of the current `PalWorldSettings.ini` is created first, then
+   your changes are written.
 4. **Start the server** (there's a *Start server* button right on the page) to apply
    the changes.
 
@@ -119,8 +117,8 @@ Developer diagnostics are hidden by default. To surface the debug section, set:
 - Edit supported `OptionSettings` values from `PalWorldSettings.ini` with typed,
   grouped, searchable controls and one-click presets.
 - Detect server power state and gate saving on a safe (offline) state.
-- Preview changes before writing, back up the config before each save, and let you
-  restore or delete backups in-panel — preserving unknown keys throughout.
+- Back up the config before each save, and let you restore or delete backups
+  in-panel — preserving unknown keys throughout.
 - Reset the form to Palworld defaults and start/restart the server from the page.
 
 **Does not:**
