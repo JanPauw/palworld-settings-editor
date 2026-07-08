@@ -1,0 +1,81 @@
+name: Release on version bump
+
+# Runs on every push to main, but only cuts a release when the version in
+# plugin.json has been bumped to one that has no release yet. Doc-only or
+# refactor commits that leave the version untouched are a no-op (they just
+# log "already released" and stop), so re-releasing the same version can't
+# happen by accident.
+
+on:
+  push:
+    branches: [main]
+
+# Needed to create the git tag + GitHub release.
+permissions:
+  contents: write
+
+# Never run two releases for main at once; don't cancel a release mid-flight.
+concurrency:
+  group: release-main
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Read plugin version
+        id: meta
+        run: |
+          version="$(jq -r '.version' plugin.json)"
+          if [ -z "$version" ] || [ "$version" = "null" ]; then
+            echo "::error::Could not read .version from plugin.json"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=v$version" >> "$GITHUB_OUTPUT"
+          echo "Detected plugin version: v$version"
+
+      - name: Check whether this release already exists
+        id: check
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          tag="${{ steps.meta.outputs.tag }}"
+          if gh release view "$tag" >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "Release $tag already exists — nothing to do."
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+            echo "Release $tag does not exist yet — building it."
+          fi
+
+      - name: Build plugin zip
+        if: steps.check.outputs.exists == 'false'
+        run: |
+          tag="${{ steps.meta.outputs.tag }}"
+          zip="palworld-settings-editor-$tag.zip"
+          # git archive writes zip natively (no `zip` binary needed) and the
+          # --prefix gives the required top-level palworld-settings-editor/
+          # folder. Only the runtime files + user manual are shipped.
+          git archive --format=zip \
+            --prefix=palworld-settings-editor/ \
+            -o "$zip" HEAD \
+            plugin.json src config resources README.md
+          echo "ZIP_NAME=$zip" >> "$GITHUB_ENV"
+          echo "Built $zip:"
+          unzip -l "$zip"
+
+      - name: Create release
+        if: steps.check.outputs.exists == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          tag="${{ steps.meta.outputs.tag }}"
+          gh release create "$tag" "$ZIP_NAME" \
+            --target "${{ github.sha }}" \
+            --title "Palworld Settings Editor $tag" \
+            --generate-notes
+          echo "Published release $tag."
