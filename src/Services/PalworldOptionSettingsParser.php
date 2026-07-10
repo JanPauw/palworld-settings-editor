@@ -306,7 +306,7 @@ class PalworldOptionSettingsParser
         // here is a genuine string-field value (e.g. RandomizerSeed) and must be quoted as-is
         // rather than reformatted to 6 decimals.
 
-        if (in_array($stringValue, ['None', 'Normal', 'Hard', 'Item', 'ItemAndEquipment', 'All', 'Region', 'Text'], true)) {
+        if (in_array($stringValue, ['None', 'Normal', 'Hard', 'Item', 'ItemAndEquipment', 'All', 'Region', 'Text', 'Json'], true)) {
             return $stringValue;
         }
 
