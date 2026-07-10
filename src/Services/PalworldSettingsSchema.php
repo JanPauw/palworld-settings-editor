@@ -20,6 +20,8 @@ class PalworldSettingsSchema
                     'EnemyDropItemRate' => ['label' => 'Enemy Drop Item Rate', 'type' => 'number', 'min' => 0, 'max' => 20, 'step' => 0.1],
                     'SupplyDropSpan' => ['label' => 'Supply Drop Span', 'type' => 'integer', 'min' => 0, 'max' => 100000],
                     'WorkSpeedRate' => ['label' => 'Work Speed Rate', 'type' => 'number', 'min' => 0, 'max' => 20, 'step' => 0.1],
+                    // Added in Palworld 1.0: production-speed multiplier for the Monster Farm (ranch) grazing yield.
+                    'MonsterFarmActionSpeedRate' => ['label' => 'Monster Farm Speed Rate', 'type' => 'number', 'min' => 0, 'max' => 20, 'step' => 0.1],
                 ],
             ],
             'player_and_pal_rates' => [
@@ -56,11 +58,13 @@ class PalworldSettingsSchema
                     'bEnableDefenseOtherGuildPlayer' => ['label' => 'Enable Defense for Other Guild Players', 'type' => 'boolean'],
                     'bIsShowJoinLeftMessage' => ['label' => 'Show Join/Leave Messages', 'type' => 'boolean'],
                     'bEnableInvaderEnemy' => ['label' => 'Enable Invader Enemy (Raids)', 'type' => 'boolean'],
+                    // Added in Palworld 1.0: built-in proximity voice chat.
+                    'bEnableVoiceChat' => ['label' => 'Enable Voice Chat', 'type' => 'boolean'],
                     'bUseAuth' => ['label' => 'Use Authentication', 'type' => 'boolean'],
                     'bIsUseBackupSaveData' => ['label' => 'Use Backup Save Data', 'type' => 'boolean'],
                     'AutoSaveSpan' => ['label' => 'Auto Save Span', 'type' => 'number', 'min' => 0, 'max' => 100000, 'step' => 0.1],
                     'BanListURL' => ['label' => 'Ban List URL', 'type' => 'string'],
-                    'LogFormatType' => ['label' => 'Log Format Type', 'type' => 'string'],
+                    'LogFormatType' => ['label' => 'Log Format Type', 'type' => 'enum', 'options' => ['Text', 'Json']],
                     'CrossplayPlatforms' => ['label' => 'Crossplay Platforms', 'type' => 'string'],
                 ],
             ],
@@ -114,6 +118,13 @@ class PalworldSettingsSchema
                     'bShowPlayerList' => ['label' => 'Show Player List', 'type' => 'boolean'],
                     'EnablePredatorBossPal' => ['label' => 'Enable Predator Boss Pal', 'type' => 'boolean'],
                     'ServerReplicatePawnCullDistance' => ['label' => 'Pawn Cull Distance', 'type' => 'number', 'min' => 0, 'max' => 1000000, 'step' => 0.1],
+                    // Added in Palworld 1.0: performance cap on drop items simulated with physics.
+                    'PhysicsActiveDropItemMaxNum' => ['label' => 'Physics-Active Drop Item Max', 'type' => 'integer', 'min' => 0, 'max' => 100000],
+                    // Added in Palworld 1.0: proximity voice-chat attenuation distances (in cm).
+                    'VoiceChatMaxVolumeDistance' => ['label' => 'Voice Chat Max-Volume Distance', 'type' => 'number', 'min' => 0, 'max' => 1000000, 'step' => 0.1],
+                    'VoiceChatZeroVolumeDistance' => ['label' => 'Voice Chat Zero-Volume Distance', 'type' => 'number', 'min' => 0, 'max' => 1000000, 'step' => 0.1],
+                    // Added in Palworld 1.0: show the building creator's player ID on structures.
+                    'bEnableBuildingPlayerUIdDisplay' => ['label' => 'Show Builder Player ID on Structures', 'type' => 'boolean'],
                     'bAllowGlobalPalboxExport' => ['label' => 'Allow Global Palbox Export', 'type' => 'boolean'],
                     'bAllowGlobalPalboxImport' => ['label' => 'Allow Global Palbox Import', 'type' => 'boolean'],
                     'ItemContainerForceMarkDirtyInterval' => ['label' => 'Item Dirty Interval', 'type' => 'number', 'min' => 0, 'max' => 100000, 'step' => 0.1],
@@ -266,8 +277,14 @@ class PalworldSettingsSchema
             'bShowPlayerList' => 'Controls whether the in-game player list is visible.',
             'AutoSaveSpan' => 'Sets how often the world auto-saves.',
             'BanListURL' => 'Remote URL used for the server ban list.',
-            'LogFormatType' => 'Determines the log output format written by the server.',
+            'LogFormatType' => 'Determines the log output format written by the server (Text or Json).',
             'CrossplayPlatforms' => 'Lists the platforms allowed to join the server.',
+            'MonsterFarmActionSpeedRate' => 'Multiplies how quickly Pals produce items while grazing at the Monster Farm.',
+            'bEnableVoiceChat' => 'Enables the built-in proximity voice chat added in Palworld 1.0.',
+            'VoiceChatMaxVolumeDistance' => 'Distance (in cm) within which proximity voice chat plays at full volume.',
+            'VoiceChatZeroVolumeDistance' => 'Distance (in cm) beyond which proximity voice chat fades to silence.',
+            'PhysicsActiveDropItemMaxNum' => 'Caps how many dropped items are simulated with physics at once (performance).',
+            'bEnableBuildingPlayerUIdDisplay' => 'Shows the creating player\'s ID on placed structures.',
         ];
 
         if (isset($descriptions[$fieldKey])) {
@@ -315,6 +332,7 @@ class PalworldSettingsSchema
             'PalEggDefaultHatchingTime' => 72.0, 'CollectionDropRate' => 1.0,
             'CollectionObjectHpRate' => 1.0, 'CollectionObjectRespawnSpeedRate' => 1.0,
             'EnemyDropItemRate' => 1.0, 'SupplyDropSpan' => 180, 'WorkSpeedRate' => 1.0,
+            'MonsterFarmActionSpeedRate' => 1.0,
             // Damage, stamina, hunger, HP
             'PlayerDamageRateAttack' => 1.0, 'PlayerDamageRateDefense' => 1.0,
             'PlayerStomachDecreaceRate' => 1.0, 'PlayerStaminaDecreaceRate' => 1.0,
@@ -330,7 +348,8 @@ class PalworldSettingsSchema
             'bEnableFastTravel' => true, 'bEnableFastTravelOnlyBaseCamp' => false,
             'bIsStartLocationSelectByMap' => true, 'bExistPlayerAfterLogout' => false,
             'bEnableDefenseOtherGuildPlayer' => false, 'bIsShowJoinLeftMessage' => true,
-            'bEnableInvaderEnemy' => true, 'bUseAuth' => true, 'bIsUseBackupSaveData' => true,
+            'bEnableInvaderEnemy' => true, 'bEnableVoiceChat' => false,
+            'bUseAuth' => true, 'bIsUseBackupSaveData' => true,
             'AutoSaveSpan' => 30, 'BanListURL' => 'https://api.palworldgame.com/api/banlist.txt',
             'LogFormatType' => 'Text', 'CrossplayPlatforms' => '(Steam,Xbox,PS5,Mac)',
             // Death and difficulty
@@ -341,7 +360,8 @@ class PalworldSettingsSchema
             'bCanPickupOtherGuildDeathPenaltyDrop' => false,
             'RespawnPenaltyDurationThreshold' => 0.0, 'RespawnPenaltyTimeScale' => 0.0,
             // Base, guild, and limits
-            'BaseCampMaxNum' => 128, 'BaseCampWorkerMaxNum' => 15, 'BaseCampMaxNumInGuild' => 3,
+            // Palworld 1.0 raised the per-guild base-camp default from 3 to 4 (max 10).
+            'BaseCampMaxNum' => 128, 'BaseCampWorkerMaxNum' => 15, 'BaseCampMaxNumInGuild' => 4,
             'GuildPlayerMaxNum' => 20, 'DropItemMaxNum' => 3000, 'DropItemMaxNum_UNKO' => 100,
             'DropItemAliveMaxHours' => 1.0, 'CoopPlayerMaxNum' => 4,
             'AutoResetGuildTimeNoOnlinePlayers' => 72.0, 'bAutoResetGuildNoOnlinePlayers' => false,
@@ -351,7 +371,13 @@ class PalworldSettingsSchema
             'bIsMultiplay' => false, 'bIsPvP' => false, 'bCharacterRecreateInHardcore' => false,
             'Region' => '', 'ChatPostLimitPerMinute' => 10, 'RESTAPIEnabled' => false,
             'RESTAPIPort' => 8212, 'bShowPlayerList' => false, 'EnablePredatorBossPal' => true,
-            'ServerReplicatePawnCullDistance' => 15000.0, 'bAllowGlobalPalboxExport' => true,
+            'ServerReplicatePawnCullDistance' => 15000.0,
+            // Palworld 1.0 additions. Pocketpair has not published reference defaults for the
+            // voice-chat distances / physics cap yet, so these are best-effort estimates used only
+            // as a fallback — resetToDefaults() reads the server's real DefaultPalWorldSettings.ini first.
+            'bEnableBuildingPlayerUIdDisplay' => false, 'PhysicsActiveDropItemMaxNum' => 400,
+            'VoiceChatMaxVolumeDistance' => 1000.0, 'VoiceChatZeroVolumeDistance' => 4000.0,
+            'bAllowGlobalPalboxExport' => true,
             'bAllowGlobalPalboxImport' => false, 'ItemContainerForceMarkDirtyInterval' => 1.0,
             'ItemCorruptionMultiplier' => 1.0, 'bBuildAreaLimit' => false,
             'bInvisibleOtherGuildBaseCampAreaFX' => false,

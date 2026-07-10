@@ -4,8 +4,10 @@ A [Pelican Panel](https://pelican.dev) **server**-panel plugin for safely editin
 Palworld gameplay and world settings straight from the panel — no manual file
 editing, no SSH.
 
-It adds a **Palworld Settings** page to a Palworld server view that reads,
-parses, and rewrites the `OptionSettings=(...)` payload in:
+It tracks the current Palworld dedicated-server settings — including the options
+added in the **Palworld 1.0** release (proximity voice chat, Monster Farm speed,
+and more) — and adds a **Palworld Settings** page to a Palworld server view that
+reads, parses, and rewrites the `OptionSettings=(...)` payload in:
 
 ```
 Pal/Saved/Config/LinuxServer/PalWorldSettings.ini
@@ -40,7 +42,7 @@ out of their way and only touches what's safe to change.
   - Death and Difficulty
   - Base, Guild, and Limits
   - Advanced / Present-only Fields
-- **Live search** — filter the ~100 settings by name or key; matching sections
+- **Live search** — filter the 100+ settings by name or key; matching sections
   expand automatically and empty ones hide.
 - **Presets** — one click applies a themed set of values (Casual, Normal/Vanilla,
   Hardcore, PvP, Fast Progression); only keys present in your file are touched, and
